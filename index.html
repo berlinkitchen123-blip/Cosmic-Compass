@@ -37,22 +37,38 @@
             border-radius: 10px;
         }
     </style>
+    
+    <!-- Import Map for Module Resolution -->
     <script type="importmap">
-{
-  "imports": {
-    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.29.0",
-    "react": "https://aistudiocdn.com/react@^19.2.0",
-    "react/": "https://aistudiocdn.com/react@^19.2.0/",
-    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
-    "firebase/app": "https://www.gstatic.com/firebasejs/11.1.0/firebase-app.js",
-    "firebase/database": "https://www.gstatic.com/firebasejs/11.1.0/firebase-database.js",
-    "firebase/": "https://esm.sh/firebase@^12.7.0/"
-  }
-}
-</script>
+    {
+      "imports": {
+        "@google/genai": "https://aistudiocdn.com/@google/genai@^1.29.0",
+        "react": "https://aistudiocdn.com/react@^19.2.0",
+        "react/": "https://aistudiocdn.com/react@^19.2.0/",
+        "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
+        "firebase/app": "https://www.gstatic.com/firebasejs/11.1.0/firebase-app.js",
+        "firebase/database": "https://www.gstatic.com/firebasejs/11.1.0/firebase-database.js",
+        "firebase/": "https://esm.sh/firebase@^12.7.0/"
+      }
+    }
+    </script>
+
+    <!-- Global Shim for process.env (Required for Browser-only environments) -->
+    <script>
+      window.process = window.process || { env: {} };
+    </script>
+
+    <!-- Babel Standalone for In-Browser JSX/TS Transpilation -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 </head>
 <body class="text-gray-100 min-h-screen">
     <div id="root"></div>
-    <script type="module" src="/index.tsx"></script>
+    <!-- Load index.tsx using Babel as an ES Module -->
+    <script 
+        type="text/babel" 
+        data-type="module" 
+        data-presets="typescript,react" 
+        src="/index.tsx"
+    ></script>
 </body>
 </html>
