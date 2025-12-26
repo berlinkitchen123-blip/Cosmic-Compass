@@ -46,8 +46,8 @@
         "react": "https://aistudiocdn.com/react@^19.2.0",
         "react/": "https://aistudiocdn.com/react@^19.2.0/",
         "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
-        "firebase/app": "https://www.gstatic.com/firebasejs/12.7.0/firebase-app.js",
-        "firebase/database": "https://www.gstatic.com/firebasejs/12.7.0/firebase-database.js",
+        "firebase/app": "https://www.gstatic.com/firebasejs/11.1.0/firebase-app.js",
+        "firebase/database": "https://www.gstatic.com/firebasejs/11.1.0/firebase-database.js",
         "firebase/": "https://esm.sh/firebase@^12.7.0/"
       }
     }
@@ -64,12 +64,11 @@
 <body class="text-gray-100 min-h-screen">
     <div id="root"></div>
     <!-- Load index.tsx using Babel as an ES Module -->
-    <!-- Changed src="/index.tsx" to "index.tsx" to fix 404 on subdirectories -->
     <script 
         type="text/babel" 
         data-type="module" 
         data-presets="typescript,react" 
-        src="index.tsx"
+        src="/index.tsx"
     ></script>
 </body>
 </html>

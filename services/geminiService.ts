@@ -2,7 +2,7 @@
 // services/geminiService.ts
 
 import { GoogleGenAI, Chat, GenerateContentResponse } from "@google/genai";
-import { BirthDetails, ReadingOptions, AdvancedReadingOptions, LifeEvent, SpouseDetails, ApiResponse, Visuals, ChatMessage } from "../types.ts";
+import { BirthDetails, ReadingOptions, AdvancedReadingOptions, LifeEvent, SpouseDetails, ApiResponse, Visuals, ChatMessage } from "../types";
 
 // Helper to build the astrology prompt for both static readings and chat sessions.
 function buildAstrologyPrompt(

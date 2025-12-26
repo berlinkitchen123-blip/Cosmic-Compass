@@ -1,8 +1,8 @@
 
 // services/firebaseService.ts
 
-import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getDatabase, ref, set, get } from 'firebase/database';
+import * as FirebaseApp from 'firebase/app';
+import * as FirebaseDatabase from 'firebase/database';
 
 const firebaseConfig = {
   apiKey: "AIzaSyDrFjYv2c322zzCMsgpVttjUz9lWDrBoUg",
@@ -14,10 +14,9 @@ const firebaseConfig = {
   appId: "1:160679439170:web:bafbb80eb30f64ee9476db"
 };
 
-// Initialize Firebase using modular SDK functions.
-// This fix addresses the error where getApps, initializeApp, and getApp were accessed via a namespace.
-const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
-const db = getDatabase(app);
+// Initialize Firebase using namespace access to ensure compatibility with various TypeScript module resolution settings.
+const app = !FirebaseApp.getApps().length ? FirebaseApp.initializeApp(firebaseConfig) : FirebaseApp.getApp();
+const db = FirebaseDatabase.getDatabase(app);
 
 /**
  * Gets or creates a persistent unique ID for this device/browser.
@@ -36,9 +35,9 @@ export const getOrGenerateUserId = (): string => {
  */
 export const syncToFirebase = async (userId: string, data: any) => {
   try {
-    // Accessing database functions directly via named imports as required by the modular Firebase SDK.
-    const userRef = ref(db, `users/${userId}`);
-    await set(userRef, {
+    // Accessing database functions through the namespace to maintain consistency with the app initialization fix.
+    const userRef = FirebaseDatabase.ref(db, `users/${userId}`);
+    await FirebaseDatabase.set(userRef, {
       ...data,
       lastUpdated: new Date().toISOString()
     });
@@ -54,9 +53,9 @@ export const syncToFirebase = async (userId: string, data: any) => {
  */
 export const loadFromFirebase = async (userId: string): Promise<any | null> => {
   try {
-    // Accessing database functions directly via named imports as required by the modular Firebase SDK.
-    const userRef = ref(db, `users/${userId}`);
-    const snapshot = await get(userRef);
+    // Accessing database functions through the namespace to maintain consistency with the app initialization fix.
+    const userRef = FirebaseDatabase.ref(db, `users/${userId}`);
+    const snapshot = await FirebaseDatabase.get(userRef);
     if (snapshot.exists()) {
       return snapshot.val();
     }
