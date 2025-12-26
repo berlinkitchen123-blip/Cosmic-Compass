@@ -2,13 +2,13 @@
 // App.tsx
 
 import React, { useState, useCallback, useEffect, useRef } from 'react';
-import { BirthDetails, ReadingOptions, AdvancedReadingOptions, LifeEvent, SpouseDetails, ApiResponse, ChatMessage, Visuals } from './types';
-import { getCombinedReading, initializeChatSession, sendChatMessage } from './services/geminiService';
-import InputField from './components/InputField';
-import CheckboxField from './components/CheckboxField';
-import ChatInterface from './components/ChatInterface';
-import { saveStateToLocalStorage, loadStateFromLocalStorage } from './utils/storage';
-import { getOrGenerateUserId, syncToFirebase, loadFromFirebase } from './services/firebaseService';
+import { BirthDetails, ReadingOptions, AdvancedReadingOptions, LifeEvent, SpouseDetails, ApiResponse, ChatMessage, Visuals } from './types.ts';
+import { getCombinedReading, initializeChatSession, sendChatMessage } from './services/geminiService.ts';
+import InputField from './components/InputField.tsx';
+import CheckboxField from './components/CheckboxField.tsx';
+import ChatInterface from './components/ChatInterface.tsx';
+import { saveStateToLocalStorage, loadStateFromLocalStorage } from './utils/storage.ts';
+import { getOrGenerateUserId, syncToFirebase, loadFromFirebase } from './services/firebaseService.ts';
 import { Chat } from '@google/genai';
 
 const MASTER_STORAGE_KEY = 'cosmic_compass_master_v1';
