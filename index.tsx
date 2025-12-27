@@ -1,4 +1,3 @@
-
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import ReactDOM from 'react-dom/client';
 import { GoogleGenAI, Chat, GenerateContentResponse } from "@google/genai";
@@ -38,20 +37,20 @@ interface LifeEvent {
   planet?: string;
 }
 
-interface Visuals {
-  face?: string;
-  leftHand?: string;
-  rightHand?: string;
-}
-
-interface ApiResponse {
-  reading: string;
-  groundingSources?: any[];
-}
-
 interface ChatMessage {
   role: 'user' | 'model';
   text: string;
+}
+
+interface AppState {
+  birthDetails: BirthDetails;
+  readingOptions: ReadingOptions;
+  advancedReadingOptions: AdvancedReadingOptions;
+  lifeEvents: LifeEvent[];
+  outputLanguage: string;
+  chatHistory: ChatMessage[];
+  enableGoogleSearch: boolean;
+  specialNotes: string;
 }
 
 // --- Firebase Service ---
@@ -66,8 +65,8 @@ const firebaseConfig = {
   appId: "1:160679439170:web:bafbb80eb30f64ee9476db"
 };
 
-const fbApp = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
-const db = getDatabase(fbApp, firebaseConfig.databaseURL);
+const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
+const db = getDatabase(app);
 
 const getOrGenerateUserId = (): string => {
   let userId = localStorage.getItem('cosmic_user_id');
@@ -106,11 +105,8 @@ const LATEST_PRO_MODEL = 'gemini-3-pro-preview';
 
 function buildAstrologyPrompt(
   birthDetails: BirthDetails,
-  options: ReadingOptions,
-  advancedOptions: AdvancedReadingOptions,
   lifeEvents: LifeEvent[],
   outputLanguage: string,
-  visuals?: Visuals,
   isChatContext: boolean = false
 ): string {
   const today = new Date();
@@ -129,50 +125,15 @@ function buildAstrologyPrompt(
   prompt += `\n\nCORE SUBJECT:
 - Name: ${birthDetails.name}
 - Birth: ${birthDetails.dob} at ${birthDetails.tob} in ${birthDetails.pob}
-- Rashi: ${birthDetails.rashi || 'Calculate'}
 
-THE 9-5-1 WILLPOWER LINE (NUMEROLOGY):
-- Analyze the 9-5-1 (Mars-Mercury-Sun) axis for leadership and resilience.
+THE 9-5-1 WILLPOWER LINE:
+- Analyze the 9 (Mars), 5 (Mercury), 1 (Sun) axis for leadership and resilience.
 
 NAVAGRAHA MAPPING:
-${lifeEvents.map(e => `- ${e.planet || 'Unspecified'} (${e.date}): ${e.description}`).join('\n')}
+${lifeEvents.map(e => `- ${e.planet || 'Unspecified'} Node (${e.date}): ${e.description}`).join('\n')}
 
 Format: Markdown. Tone: Visionary.`;
   return prompt;
-}
-
-function getPartFromImage(dataUri: string) {
-  const [header, data] = dataUri.split(',');
-  const mimeType = header.match(/:(.*?);/)?.[1] || 'image/jpeg';
-  return { inlineData: { mimeType, data } };
-}
-
-async function getCombinedReading(
-  birthDetails: BirthDetails,
-  options: ReadingOptions,
-  advancedOptions: AdvancedReadingOptions,
-  lifeEvents: LifeEvent[],
-  outputLanguage: string,
-  enableGoogleSearch: boolean = false,
-  visuals?: Visuals
-): Promise<ApiResponse> {
-  const ai = new GoogleGenAI({apiKey: process.env.API_KEY});
-  const textPrompt = buildAstrologyPrompt(birthDetails, options, advancedOptions, lifeEvents, outputLanguage, visuals, false);
-  const parts: any[] = [{ text: textPrompt }];
-  if (visuals?.face) parts.push(getPartFromImage(visuals.face));
-  
-  const response = await ai.models.generateContent({
-    model: LATEST_PRO_MODEL,
-    contents: { parts },
-    config: { 
-      temperature: 0.7, 
-      tools: enableGoogleSearch ? [{ googleSearch: {} }] : undefined
-    },
-  });
-  return { 
-    reading: response.text || "Cosmic signal lost.", 
-    groundingSources: response.candidates?.[0]?.groundingMetadata?.groundingChunks || [] 
-  };
 }
 
 // --- Components ---
@@ -180,7 +141,13 @@ async function getCombinedReading(
 const InputField: React.FC<{ label: string; id: string; type: string; value: string; onChange: (e: any) => void }> = ({ label, id, type, value, onChange }) => (
   <div className="mb-4">
     <label htmlFor={id} className="block text-[10px] uppercase tracking-widest text-gray-400 font-bold mb-1.5 px-1">{label}</label>
-    <input type={type} id={id} value={value} onChange={onChange} className="w-full bg-black/20 border border-white/10 rounded-xl py-2.5 px-4 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/30 transition-all" />
+    <input 
+      type={type} 
+      id={id} 
+      value={value} 
+      onChange={onChange} 
+      className="w-full bg-black/20 border border-white/10 rounded-xl py-2.5 px-4 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/30 transition-all" 
+    />
   </div>
 );
 
@@ -188,13 +155,10 @@ const ChatInterface: React.FC<{
   chatHistory: ChatMessage[];
   onSendMessage: (msg: string) => void;
   loading: boolean;
-  error: string | null;
   onBackToForm: () => void;
   onClearChat: () => void;
-  suggestedQuestions: string[];
-  isSyncing?: boolean;
   isFirebaseSynced?: boolean;
-}> = ({ chatHistory, onSendMessage, loading, error, onBackToForm, onClearChat, suggestedQuestions, isSyncing, isFirebaseSynced }) => {
+}> = ({ chatHistory, onSendMessage, loading, onBackToForm, onClearChat, isFirebaseSynced }) => {
   const [currentInput, setCurrentInput] = useState('');
   const endRef = useRef<HTMLDivElement>(null);
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [chatHistory]);
@@ -209,13 +173,13 @@ const ChatInterface: React.FC<{
           <div>
             <h2 className="text-lg font-bold text-white leading-tight">Cosmic Oracle Chat</h2>
             <p className="text-[10px] uppercase text-indigo-400 font-black tracking-tighter">
-              {isSyncing ? 'Saving to Cloud...' : isFirebaseSynced ? 'Synced to Akashic Record' : 'Sync Pending'}
+              {isFirebaseSynced ? 'Synced to Akashic Record' : 'Sync Pending'}
             </p>
           </div>
         </div>
         <div className="flex space-x-2">
-          <button onClick={onClearChat} className="px-3 py-1.5 text-xs text-gray-400 hover:text-white">Clear History</button>
-          <button onClick={onBackToForm} className="px-4 py-1.5 text-xs bg-indigo-600/20 text-indigo-300 rounded-lg">← View Chart</button>
+          <button onClick={onClearChat} className="px-3 py-1.5 text-xs text-gray-400 hover:text-white">Clear</button>
+          <button onClick={onBackToForm} className="px-4 py-1.5 text-xs bg-indigo-600/20 text-indigo-300 rounded-lg">← Profile</button>
         </div>
       </div>
       <div className="flex-1 overflow-y-auto p-6 space-y-4 custom-scrollbar bg-black/10">
@@ -251,17 +215,6 @@ const ChatInterface: React.FC<{
 const MASTER_STORAGE_KEY = 'cosmic_compass_master_v3';
 const PLANETS = ['Sun', 'Moon', 'Mars', 'Mercury', 'Jupiter', 'Venus', 'Saturn', 'Rahu', 'Ketu'];
 
-interface AppState {
-  birthDetails: BirthDetails;
-  readingOptions: ReadingOptions;
-  advancedReadingOptions: AdvancedReadingOptions;
-  lifeEvents: LifeEvent[];
-  outputLanguage: string;
-  enableGoogleSearch: boolean;
-  chatHistory: ChatMessage[];
-  visuals: Visuals;
-}
-
 const DEFAULT_STATE: AppState = {
   birthDetails: { name: 'Harshkumar Panubhai Patel', dob: '1995-01-17', tob: '15:58', pob: 'Vadodara, Gujarat, India', rashi: 'Cancer' },
   readingOptions: { astrology: true, numerology: true, rashifal: true, jyotish: true, dailyHoroscope: true, palmistry: true, lalKitab: true, vasthu: true, faceReading: true },
@@ -285,13 +238,12 @@ const DEFAULT_STATE: AppState = {
   outputLanguage: 'Gujarati',
   enableGoogleSearch: true,
   chatHistory: [],
-  visuals: {}
+  specialNotes: 'Active 9-5-1 Willpower Axis'
 };
 
 const App: React.FC = () => {
   const [userId] = useState(() => getOrGenerateUserId());
   const [isFirebaseSynced, setIsFirebaseSynced] = useState(false);
-  const [isSyncing, setIsSyncing] = useState(false);
   const [isRecovering, setIsRecovering] = useState(true);
   const [appState, setAppState] = useState<AppState>(() => {
     const local = localStorage.getItem(MASTER_STORAGE_KEY);
@@ -312,10 +264,8 @@ const App: React.FC = () => {
   useEffect(() => {
     localStorage.setItem(MASTER_STORAGE_KEY, JSON.stringify(appState));
     const timer = setTimeout(async () => {
-      setIsSyncing(true);
       const ok = await syncToFirebase(userId, appState);
       setIsFirebaseSynced(ok);
-      setIsSyncing(false);
     }, 3000);
     return () => clearTimeout(timer);
   }, [appState, userId]);
@@ -323,8 +273,14 @@ const App: React.FC = () => {
   const handleGenerateReading = async () => {
     setLoading(true);
     try {
-      const res = await getCombinedReading(appState.birthDetails, appState.readingOptions, appState.advancedReadingOptions, appState.lifeEvents, appState.outputLanguage, appState.enableGoogleSearch, appState.visuals);
-      setReading(res.reading);
+      const ai = new GoogleGenAI({apiKey: process.env.API_KEY});
+      const prompt = buildAstrologyPrompt(appState.birthDetails, appState.lifeEvents, appState.outputLanguage);
+      const res = await ai.models.generateContent({
+        model: LATEST_PRO_MODEL,
+        contents: prompt,
+        config: { tools: appState.enableGoogleSearch ? [{ googleSearch: {} }] : undefined },
+      });
+      setReading(res.text || '');
     } catch (e: any) { alert(e.message); } finally { setLoading(false); }
   };
 
@@ -334,7 +290,7 @@ const App: React.FC = () => {
       chatSessionRef.current = ai.chats.create({
         model: LATEST_PRO_MODEL,
         config: { 
-          systemInstruction: buildAstrologyPrompt(appState.birthDetails, appState.readingOptions, appState.advancedReadingOptions, appState.lifeEvents, appState.outputLanguage, appState.visuals, true),
+          systemInstruction: buildAstrologyPrompt(appState.birthDetails, appState.lifeEvents, appState.outputLanguage, true),
           tools: appState.enableGoogleSearch ? [{ googleSearch: {} }] : undefined
         },
       });
@@ -349,21 +305,18 @@ const App: React.FC = () => {
   };
 
   if (isRecovering) return (
-    <div className="h-screen flex items-center justify-center bg-black">
-      <div className="text-center">
-        <div className="w-12 h-12 border-t-2 border-indigo-500 rounded-full animate-spin mx-auto mb-4"></div>
-        <p className="text-indigo-400 font-bold uppercase tracking-[0.3em] text-[10px]">Accessing Akashic Records...</p>
-      </div>
+    <div className="h-screen flex items-center justify-center bg-black text-indigo-400 font-bold uppercase tracking-[0.3em] text-[10px]">
+      Accessing Akashic Records...
     </div>
   );
 
   return (
     <div className="max-w-7xl mx-auto py-12 px-6">
       <header className="text-center mb-12">
-        <h1 className="font-serif text-5xl md:text-6xl text-white font-bold mb-4 bg-clip-text text-transparent bg-gradient-to-b from-white to-indigo-400">Cosmic Compass</h1>
+        <h1 className="font-serif text-5xl text-white font-bold mb-4 bg-clip-text text-transparent bg-gradient-to-b from-white to-indigo-400">Cosmic Compass</h1>
         <div className="flex justify-center space-x-4 items-center">
           <div className={`px-4 py-1.5 rounded-full border text-[10px] font-black uppercase tracking-widest transition-all ${isFirebaseSynced ? 'bg-indigo-500/10 border-indigo-500/30 text-indigo-300' : 'bg-amber-500/10 border-amber-500/30 text-amber-300'}`}>
-            {isSyncing ? 'Syncing...' : isFirebaseSynced ? 'Cloud Connected' : 'Sync Pending'}
+            {isFirebaseSynced ? 'Cloud Connected' : 'Sync Pending'}
           </div>
           <select value={appState.outputLanguage} onChange={e => setAppState(p => ({...p, outputLanguage: e.target.value}))} className="bg-white/5 border border-white/10 rounded-full px-4 py-1.5 text-[10px] font-bold text-indigo-300 outline-none uppercase tracking-widest cursor-pointer">
             <option value="English">English</option>
@@ -382,23 +335,34 @@ const App: React.FC = () => {
       {!isChatMode ? (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
           <div className="lg:col-span-4 space-y-6">
-            <section className="glass rounded-[2rem] p-8 border border-white/10">
+            <section className="glass rounded-[2rem] p-8 border border-white/10 shadow-xl">
               <h2 className="font-serif text-2xl text-white mb-6">Birth Data</h2>
-              <InputField label="Full Name" id="n" type="text" value={appState.birthDetails.name} onChange={e => setAppState(p => ({...p, birthDetails: {...p.birthDetails, name: e.target.value}}))} />
+              <InputField label="Name" id="n" type="text" value={appState.birthDetails.name} onChange={e => setAppState(p => ({...p, birthDetails: {...p.birthDetails, name: e.target.value}}))} />
               <div className="grid grid-cols-2 gap-4">
-                <InputField label="Birth Date" id="d" type="date" value={appState.birthDetails.dob} onChange={e => setAppState(p => ({...p, birthDetails: {...p.birthDetails, dob: e.target.value}}))} />
-                <InputField label="Birth Time" id="t" type="time" value={appState.birthDetails.tob} onChange={e => setAppState(p => ({...p, birthDetails: {...p.birthDetails, tob: e.target.value}}))} />
+                <InputField label="Date" id="d" type="date" value={appState.birthDetails.dob} onChange={e => setAppState(p => ({...p, birthDetails: {...p.birthDetails, dob: e.target.value}}))} />
+                <InputField label="Time" id="t" type="time" value={appState.birthDetails.tob} onChange={e => setAppState(p => ({...p, birthDetails: {...p.birthDetails, tob: e.target.value}}))} />
               </div>
               <InputField label="Birth Place" id="p" type="text" value={appState.birthDetails.pob} onChange={e => setAppState(p => ({...p, birthDetails: {...p.birthDetails, pob: e.target.value}}))} />
             </section>
+            
+            <section className="glass rounded-[2rem] p-8 border border-white/10 shadow-xl">
+               <h2 className="font-serif text-2xl text-white mb-6">Willpower Axis (9-5-1)</h2>
+               <div className="grid grid-cols-3 gap-2 p-2 bg-black/20 rounded-xl">
+                  {[4,9,2,3,5,7,8,1,6].map(num => (
+                    <div key={num} className={`aspect-square flex items-center justify-center rounded-lg font-black ${[9,5,1].includes(num) ? 'bg-indigo-600 text-white shadow-lg' : 'bg-white/5 text-gray-700'}`}>{num}</div>
+                  ))}
+               </div>
+               <p className="mt-4 text-[10px] text-indigo-400 font-bold uppercase tracking-widest text-center">Active Willpower Path Analysis</p>
+            </section>
           </div>
+          
           <div className="lg:col-span-4">
             <section className="glass rounded-[2rem] p-8 flex flex-col min-h-[500px] border border-white/10 shadow-2xl">
               <h2 className="font-serif text-2xl text-white mb-6">Timeline (14 Events)</h2>
               <div className="space-y-4 overflow-y-auto custom-scrollbar flex-1 pr-2">
                 {appState.lifeEvents.map((ev, i) => (
-                  <div key={i} className="glass-dark p-4 rounded-xl border border-white/5 relative group">
-                    <div className="absolute left-0 top-0 bottom-0 w-1 bg-indigo-500 rounded-l-xl opacity-50"></div>
+                  <div key={i} className="glass-dark p-4 rounded-xl border border-white/5 relative group transition-all hover:bg-white/5">
+                    <div className="absolute left-0 top-0 bottom-0 w-1 bg-indigo-500 rounded-l-xl opacity-50 group-hover:opacity-100"></div>
                     <div className="text-[10px] text-indigo-400 font-bold mb-1 uppercase tracking-tighter">{ev.date} — {ev.planet}</div>
                     <div className="text-xs text-gray-200 leading-relaxed font-medium">{ev.description}</div>
                   </div>
@@ -406,20 +370,28 @@ const App: React.FC = () => {
               </div>
             </section>
           </div>
+          
           <div className="lg:col-span-4 space-y-6">
-            <button onClick={handleGenerateReading} disabled={loading} className="w-full py-12 bg-indigo-600 rounded-[2rem] text-white font-black text-xl shadow-[0_20px_50px_rgba(79,70,229,0.3)] hover:bg-indigo-500 transition-all active:scale-95 disabled:opacity-50 border border-white/20">
+            <button onClick={handleGenerateReading} disabled={loading} className="w-full py-12 bg-indigo-600 rounded-[2rem] text-white font-bold text-xl shadow-[0_20px_50px_rgba(79,70,229,0.3)] hover:bg-indigo-500 transition-all border border-white/20 active:scale-95">
               {loading ? "Consulting Stars..." : "Generate Cosmic Synthesis"}
             </button>
             {reading && (
-                <div className="glass rounded-[2rem] p-8 text-sm leading-relaxed whitespace-pre-wrap max-h-[400px] overflow-y-auto custom-scrollbar border border-white/10 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                    <div className="text-indigo-400 text-[10px] font-black uppercase tracking-widest mb-4">Oracle Proclamation</div>
-                    {reading}
-                </div>
+              <div className="glass rounded-[2rem] p-8 text-sm leading-relaxed whitespace-pre-wrap max-h-[400px] overflow-y-auto custom-scrollbar border border-white/10 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                <div className="text-indigo-400 text-[10px] font-black uppercase mb-4 tracking-widest">Oracle Proclamation</div>
+                {reading}
+              </div>
             )}
           </div>
         </div>
       ) : (
-        <ChatInterface chatHistory={appState.chatHistory} onSendMessage={handleSendMessage} loading={loading} error={null} onBackToForm={() => setIsChatMode(false)} onClearChat={() => setAppState(p => ({...p, chatHistory: []}))} suggestedQuestions={["Explain my 9-5-1 axis?", "What is my destiny in Germany?"]} isFirebaseSynced={isFirebaseSynced} isSyncing={isSyncing} />
+        <ChatInterface 
+          chatHistory={appState.chatHistory} 
+          onSendMessage={handleSendMessage} 
+          loading={loading} 
+          onBackToForm={() => setIsChatMode(false)} 
+          onClearChat={() => setAppState(p => ({...p, chatHistory: []}))} 
+          isFirebaseSynced={isFirebaseSynced} 
+        />
       )}
     </div>
   );
