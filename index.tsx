@@ -14,23 +14,6 @@ interface BirthDetails {
   rashi?: string; 
 }
 
-interface ReadingOptions {
-  astrology: boolean;
-  numerology: boolean;
-  rashifal: boolean;
-  jyotish: boolean;
-  dailyHoroscope: boolean;
-  palmistry: boolean;
-  lalKitab: boolean;
-  vasthu: boolean;
-  faceReading: boolean;
-}
-
-interface AdvancedReadingOptions {
-  culturalContext: string; 
-  includeScientificPerspective: boolean;
-}
-
 interface LifeEvent {
   description: string;
   date: string;
@@ -44,14 +27,19 @@ interface ChatMessage {
 
 interface AppState {
   birthDetails: BirthDetails;
-  readingOptions: ReadingOptions;
-  advancedReadingOptions: AdvancedReadingOptions;
   lifeEvents: LifeEvent[];
   outputLanguage: string;
   chatHistory: ChatMessage[];
   enableGoogleSearch: boolean;
   specialNotes: string;
+  isChatMode: boolean;
 }
+
+// --- Constants ---
+
+const LATEST_PRO_MODEL = 'gemini-3-pro-preview';
+const MASTER_STORAGE_KEY = 'cosmic_compass_master_v3_unified';
+const PLANETS = ['Sun', 'Moon', 'Mars', 'Mercury', 'Jupiter', 'Venus', 'Saturn', 'Rahu', 'Ketu'];
 
 // --- Firebase Service ---
 
@@ -65,8 +53,8 @@ const firebaseConfig = {
   appId: "1:160679439170:web:bafbb80eb30f64ee9476db"
 };
 
-const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
-const db = getDatabase(app);
+const fbApp = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
+const db = getDatabase(fbApp);
 
 const getOrGenerateUserId = (): string => {
   let userId = localStorage.getItem('cosmic_user_id');
@@ -77,31 +65,15 @@ const getOrGenerateUserId = (): string => {
   return userId;
 };
 
-const syncToFirebase = async (userId: string, data: any) => {
-  try {
-    const userRef = ref(db, `users/${userId}`);
-    await set(userRef, { ...data, lastUpdated: new Date().toISOString() });
-    return true;
-  } catch (error) {
-    console.error("Firebase Sync Error:", error);
-    return false;
-  }
+// --- Storage Utils ---
+
+const saveLocal = (state: any) => localStorage.setItem(MASTER_STORAGE_KEY, JSON.stringify(state));
+const loadLocal = (defaultState: any) => {
+  const local = localStorage.getItem(MASTER_STORAGE_KEY);
+  return local ? JSON.parse(local) : defaultState;
 };
 
-const loadFromFirebase = async (userId: string): Promise<any | null> => {
-  try {
-    const userRef = ref(db, `users/${userId}`);
-    const snapshot = await get(userRef);
-    return snapshot.exists() ? snapshot.val() : null;
-  } catch (error) {
-    console.error("Firebase Load Error:", error);
-    return null;
-  }
-};
-
-// --- Gemini Service ---
-
-const LATEST_PRO_MODEL = 'gemini-3-pro-preview';
+// --- Gemini Service Helpers ---
 
 function buildAstrologyPrompt(
   birthDetails: BirthDetails,
@@ -113,7 +85,7 @@ function buildAstrologyPrompt(
   const dateString = today.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 
   let prompt = isChatContext 
-    ? `You are the "Siddhanta Oracle". You analyze the 9 Planets (Navagraha) and the 9-5-1 Willpower Axis (Mars-Mercury-Sun). Project into 2030, 2040, and 2050.`
+    ? `You are the "Siddhanta Oracle". You analyze the 9 Planets (Navagraha) and the 9-5-1 Willpower Axis (Mars-Mercury-Sun). Analyze manifestation peaks for 2030, 2040, and 2050.`
     : `Generate a Full Navagraha Synthesis & Willpower Analysis. Date: ${dateString}.`;
 
   if (outputLanguage === 'Gujarati') {
@@ -127,7 +99,7 @@ function buildAstrologyPrompt(
 - Birth: ${birthDetails.dob} at ${birthDetails.tob} in ${birthDetails.pob}
 
 THE 9-5-1 WILLPOWER LINE:
-- Analyze the 9 (Mars), 5 (Mercury), 1 (Sun) axis for leadership and resilience.
+- Analyze the 9 (Mars), 5 (Mercury), 1 (Sun) grid for high-level manifestation and leadership resilience.
 
 NAVAGRAHA MAPPING:
 ${lifeEvents.map(e => `- ${e.planet || 'Unspecified'} Node (${e.date}): ${e.description}`).join('\n')}
@@ -151,74 +123,10 @@ const InputField: React.FC<{ label: string; id: string; type: string; value: str
   </div>
 );
 
-const ChatInterface: React.FC<{
-  chatHistory: ChatMessage[];
-  onSendMessage: (msg: string) => void;
-  loading: boolean;
-  onBackToForm: () => void;
-  onClearChat: () => void;
-  isFirebaseSynced?: boolean;
-}> = ({ chatHistory, onSendMessage, loading, onBackToForm, onClearChat, isFirebaseSynced }) => {
-  const [currentInput, setCurrentInput] = useState('');
-  const endRef = useRef<HTMLDivElement>(null);
-  useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [chatHistory]);
-
-  const handleSend = () => { if(currentInput.trim()) { onSendMessage(currentInput); setCurrentInput(''); } };
-
-  return (
-    <div className="flex flex-col h-[75vh] md:h-[80vh] glass rounded-3xl overflow-hidden shadow-2xl border border-white/10">
-      <div className="px-6 py-4 bg-white/5 border-b border-white/10 flex justify-between items-center">
-        <div className="flex items-center space-x-3">
-          <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-purple-500 to-indigo-500 flex items-center justify-center">✨</div>
-          <div>
-            <h2 className="text-lg font-bold text-white leading-tight">Cosmic Oracle Chat</h2>
-            <p className="text-[10px] uppercase text-indigo-400 font-black tracking-tighter">
-              {isFirebaseSynced ? 'Synced to Akashic Record' : 'Sync Pending'}
-            </p>
-          </div>
-        </div>
-        <div className="flex space-x-2">
-          <button onClick={onClearChat} className="px-3 py-1.5 text-xs text-gray-400 hover:text-white">Clear</button>
-          <button onClick={onBackToForm} className="px-4 py-1.5 text-xs bg-indigo-600/20 text-indigo-300 rounded-lg">← Profile</button>
-        </div>
-      </div>
-      <div className="flex-1 overflow-y-auto p-6 space-y-4 custom-scrollbar bg-black/10">
-        {chatHistory.map((msg, i) => (
-          <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-            <div className={`max-w-[85%] px-5 py-3 rounded-2xl border ${msg.role === 'user' ? 'bg-indigo-600/20 border-indigo-500/30' : 'bg-white/5 border-white/10 text-gray-200'}`}>
-              <p className="text-sm whitespace-pre-wrap">{msg.text}</p>
-            </div>
-          </div>
-        ))}
-        {loading && <div className="text-xs text-indigo-400 animate-pulse">Channeling...</div>}
-        <div ref={endRef} />
-      </div>
-      <div className="p-4 bg-white/5 border-t border-white/10">
-        <div className="relative flex items-center">
-          <input 
-            type="text" 
-            value={currentInput} 
-            onChange={e => setCurrentInput(e.target.value)} 
-            onKeyDown={e => e.key === 'Enter' && handleSend()}
-            placeholder="Ask the Oracle..."
-            className="w-full bg-black/40 border border-white/10 rounded-2xl py-4 px-6 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
-          />
-          <button onClick={handleSend} className="absolute right-2 p-2.5 bg-indigo-600 text-white rounded-xl shadow-lg">Send</button>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-// --- App Component ---
-
-const MASTER_STORAGE_KEY = 'cosmic_compass_master_v3';
-const PLANETS = ['Sun', 'Moon', 'Mars', 'Mercury', 'Jupiter', 'Venus', 'Saturn', 'Rahu', 'Ketu'];
+// --- Main App ---
 
 const DEFAULT_STATE: AppState = {
   birthDetails: { name: 'Harshkumar Panubhai Patel', dob: '1995-01-17', tob: '15:58', pob: 'Vadodara, Gujarat, India', rashi: 'Cancer' },
-  readingOptions: { astrology: true, numerology: true, rashifal: true, jyotish: true, dailyHoroscope: true, palmistry: true, lalKitab: true, vasthu: true, faceReading: true },
-  advancedReadingOptions: { culturalContext: 'Vedic', includeScientificPerspective: true },
   lifeEvents: [
     { date: '1995-01-17', description: 'Birth in Vadodara, Gujarat - Sun Node', planet: 'Sun' },
     { date: '2012-05-15', description: 'Completed High School Education', planet: 'Mercury' },
@@ -236,39 +144,50 @@ const DEFAULT_STATE: AppState = {
     { date: '2025-05-01', description: 'Future Growth: Family and Wealth Focus', planet: 'Jupiter' }
   ],
   outputLanguage: 'Gujarati',
-  enableGoogleSearch: true,
   chatHistory: [],
-  specialNotes: 'Active 9-5-1 Willpower Axis'
+  enableGoogleSearch: true,
+  specialNotes: 'Active 9-5-1 Axis',
+  isChatMode: false
 };
 
 const App: React.FC = () => {
   const [userId] = useState(() => getOrGenerateUserId());
+  const [appState, setAppState] = useState<AppState>(() => loadLocal(DEFAULT_STATE));
   const [isFirebaseSynced, setIsFirebaseSynced] = useState(false);
-  const [isRecovering, setIsRecovering] = useState(true);
-  const [appState, setAppState] = useState<AppState>(() => {
-    const local = localStorage.getItem(MASTER_STORAGE_KEY);
-    return local ? JSON.parse(local) : DEFAULT_STATE;
-  });
-  const [isChatMode, setIsChatMode] = useState(false);
-  const [reading, setReading] = useState('');
   const [loading, setLoading] = useState(false);
+  const [reading, setReading] = useState('');
   const chatSessionRef = useRef<Chat | null>(null);
+  const chatEndRef = useRef<HTMLDivElement>(null);
 
+  // Sync with Cloud
   useEffect(() => {
-    loadFromFirebase(userId).then(cloud => {
-      if (cloud) setAppState(p => ({ ...p, ...cloud }));
-      setIsRecovering(false);
-    });
+    const initCloud = async () => {
+      try {
+        const userRef = ref(db, `users/${userId}`);
+        const snap = await get(userRef);
+        if (snap.exists()) {
+          setAppState(prev => ({ ...prev, ...snap.val() }));
+          setIsFirebaseSynced(true);
+        }
+      } catch (e) { console.error("Cloud Error", e); }
+    };
+    initCloud();
   }, [userId]);
 
+  // Auto-Save
   useEffect(() => {
-    localStorage.setItem(MASTER_STORAGE_KEY, JSON.stringify(appState));
+    saveLocal(appState);
     const timer = setTimeout(async () => {
-      const ok = await syncToFirebase(userId, appState);
-      setIsFirebaseSynced(ok);
-    }, 3000);
+      try {
+        const userRef = ref(db, `users/${userId}`);
+        await set(userRef, { ...appState, lastUpdated: new Date().toISOString() });
+        setIsFirebaseSynced(true);
+      } catch { setIsFirebaseSynced(false); }
+    }, 2000);
     return () => clearTimeout(timer);
   }, [appState, userId]);
+
+  useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [appState.chatHistory]);
 
   const handleGenerateReading = async () => {
     setLoading(true);
@@ -284,7 +203,8 @@ const App: React.FC = () => {
     } catch (e: any) { alert(e.message); } finally { setLoading(false); }
   };
 
-  const handleSendMessage = async (message: string) => {
+  const handleSendMessage = async (text: string) => {
+    if (!text.trim()) return;
     const ai = new GoogleGenAI({apiKey: process.env.API_KEY});
     if (!chatSessionRef.current) {
       chatSessionRef.current = ai.chats.create({
@@ -295,28 +215,24 @@ const App: React.FC = () => {
         },
       });
     }
-    const newHist: ChatMessage[] = [...appState.chatHistory, { role: 'user', text: message }];
-    setAppState(p => ({ ...p, chatHistory: newHist }));
+
+    const newHist: ChatMessage[] = [...appState.chatHistory, { role: 'user', text }];
+    setAppState(prev => ({ ...prev, chatHistory: newHist }));
     setLoading(true);
+
     try {
-      const result = await chatSessionRef.current.sendMessage({ message });
-      setAppState(p => ({ ...p, chatHistory: [...newHist, { role: 'model', text: result.text || '' }] }));
+      const result = await chatSessionRef.current.sendMessage({ message: text });
+      setAppState(prev => ({ ...prev, chatHistory: [...newHist, { role: 'model', text: result.text || '' }] }));
     } catch (e: any) { alert(e.message); } finally { setLoading(false); }
   };
-
-  if (isRecovering) return (
-    <div className="h-screen flex items-center justify-center bg-black text-indigo-400 font-bold uppercase tracking-[0.3em] text-[10px]">
-      Accessing Akashic Records...
-    </div>
-  );
 
   return (
     <div className="max-w-7xl mx-auto py-12 px-6">
       <header className="text-center mb-12">
         <h1 className="font-serif text-5xl text-white font-bold mb-4 bg-clip-text text-transparent bg-gradient-to-b from-white to-indigo-400">Cosmic Compass</h1>
         <div className="flex justify-center space-x-4 items-center">
-          <div className={`px-4 py-1.5 rounded-full border text-[10px] font-black uppercase tracking-widest transition-all ${isFirebaseSynced ? 'bg-indigo-500/10 border-indigo-500/30 text-indigo-300' : 'bg-amber-500/10 border-amber-500/30 text-amber-300'}`}>
-            {isFirebaseSynced ? 'Cloud Connected' : 'Sync Pending'}
+          <div className={`px-4 py-1.5 rounded-full border text-[10px] font-black uppercase tracking-widest ${isFirebaseSynced ? 'bg-indigo-500/10 border-indigo-500/30 text-indigo-300' : 'bg-amber-500/10 border-amber-500/30 text-amber-300'}`}>
+            {isFirebaseSynced ? 'Cloud Synced' : 'Sync Pending'}
           </div>
           <select value={appState.outputLanguage} onChange={e => setAppState(p => ({...p, outputLanguage: e.target.value}))} className="bg-white/5 border border-white/10 rounded-full px-4 py-1.5 text-[10px] font-bold text-indigo-300 outline-none uppercase tracking-widest cursor-pointer">
             <option value="English">English</option>
@@ -327,12 +243,12 @@ const App: React.FC = () => {
 
       <div className="flex justify-center mb-12">
         <div className="glass p-1.5 rounded-2xl flex space-x-2 shadow-2xl">
-          <button onClick={() => setIsChatMode(false)} className={`px-10 py-3 rounded-xl font-bold transition-all ${!isChatMode ? 'bg-indigo-600 text-white shadow-lg' : 'text-gray-400 hover:text-white'}`}>Profile Mandali</button>
-          <button onClick={() => setIsChatMode(true)} className={`px-10 py-3 rounded-xl font-bold transition-all ${isChatMode ? 'bg-purple-600 text-white shadow-lg' : 'text-gray-400 hover:text-white'}`}>Oracle Chat</button>
+          <button onClick={() => setAppState(p => ({...p, isChatMode: false}))} className={`px-10 py-3 rounded-xl font-bold transition-all ${!appState.isChatMode ? 'bg-indigo-600 text-white shadow-lg' : 'text-gray-400 hover:text-white'}`}>Profile Mandali</button>
+          <button onClick={() => setAppState(p => ({...p, isChatMode: true}))} className={`px-10 py-3 rounded-xl font-bold transition-all ${appState.isChatMode ? 'bg-purple-600 text-white shadow-lg' : 'text-gray-400 hover:text-white'}`}>Oracle Chat</button>
         </div>
       </div>
 
-      {!isChatMode ? (
+      {!appState.isChatMode ? (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
           <div className="lg:col-span-4 space-y-6">
             <section className="glass rounded-[2rem] p-8 border border-white/10 shadow-xl">
@@ -349,7 +265,7 @@ const App: React.FC = () => {
                <h2 className="font-serif text-2xl text-white mb-6">Willpower Axis (9-5-1)</h2>
                <div className="grid grid-cols-3 gap-2 p-2 bg-black/20 rounded-xl">
                   {[4,9,2,3,5,7,8,1,6].map(num => (
-                    <div key={num} className={`aspect-square flex items-center justify-center rounded-lg font-black ${[9,5,1].includes(num) ? 'bg-indigo-600 text-white shadow-lg' : 'bg-white/5 text-gray-700'}`}>{num}</div>
+                    <div key={num} className={`aspect-square flex items-center justify-center rounded-lg font-black ${[9,5,1].includes(num) ? 'bg-indigo-600 text-white shadow-[0_0_15px_rgba(79,70,229,0.5)]' : 'bg-white/5 text-gray-700'}`}>{num}</div>
                   ))}
                </div>
                <p className="mt-4 text-[10px] text-indigo-400 font-bold uppercase tracking-widest text-center">Active Willpower Path Analysis</p>
@@ -358,13 +274,21 @@ const App: React.FC = () => {
           
           <div className="lg:col-span-4">
             <section className="glass rounded-[2rem] p-8 flex flex-col min-h-[500px] border border-white/10 shadow-2xl">
-              <h2 className="font-serif text-2xl text-white mb-6">Timeline (14 Events)</h2>
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="font-serif text-2xl text-white">Timeline (14 Events)</h2>
+                <button onClick={() => setAppState(p => ({...p, lifeEvents: [...p.lifeEvents, {date: '', description: '', planet: 'Mars'}]}))} className="w-8 h-8 rounded-full bg-indigo-600 flex items-center justify-center text-white font-bold">+</button>
+              </div>
               <div className="space-y-4 overflow-y-auto custom-scrollbar flex-1 pr-2">
                 {appState.lifeEvents.map((ev, i) => (
-                  <div key={i} className="glass-dark p-4 rounded-xl border border-white/5 relative group transition-all hover:bg-white/5">
-                    <div className="absolute left-0 top-0 bottom-0 w-1 bg-indigo-500 rounded-l-xl opacity-50 group-hover:opacity-100"></div>
-                    <div className="text-[10px] text-indigo-400 font-bold mb-1 uppercase tracking-tighter">{ev.date} — {ev.planet}</div>
-                    <div className="text-xs text-gray-200 leading-relaxed font-medium">{ev.description}</div>
+                  <div key={i} className="glass-dark p-4 rounded-xl border border-white/5 relative group">
+                    <button onClick={() => setAppState(p => ({...p, lifeEvents: p.lifeEvents.filter((_, idx) => idx !== i)}))} className="absolute right-2 top-2 text-gray-600 opacity-0 group-hover:opacity-100 transition-opacity hover:text-red-400">×</button>
+                    <div className="flex items-center space-x-2 mb-2">
+                       <input type="text" value={ev.date} onChange={e => { const evs = [...appState.lifeEvents]; evs[i].date = e.target.value; setAppState(p => ({...p, lifeEvents: evs})); }} className="bg-transparent text-[10px] text-indigo-400 font-bold uppercase w-1/2 outline-none" />
+                       <select value={ev.planet} onChange={e => { const evs = [...appState.lifeEvents]; evs[i].planet = e.target.value; setAppState(p => ({...p, lifeEvents: evs})); }} className="bg-black/20 text-[9px] text-indigo-300 font-bold px-2 py-0.5 rounded-full border border-white/5 outline-none">
+                         {PLANETS.map(p => <option key={p} value={p}>{p}</option>)}
+                       </select>
+                    </div>
+                    <textarea value={ev.description} onChange={e => { const evs = [...appState.lifeEvents]; evs[i].description = e.target.value; setAppState(p => ({...p, lifeEvents: evs})); }} className="bg-transparent text-xs text-gray-200 leading-relaxed font-medium w-full resize-none outline-none" rows={2} />
                   </div>
                 ))}
               </div>
@@ -373,10 +297,10 @@ const App: React.FC = () => {
           
           <div className="lg:col-span-4 space-y-6">
             <button onClick={handleGenerateReading} disabled={loading} className="w-full py-12 bg-indigo-600 rounded-[2rem] text-white font-bold text-xl shadow-[0_20px_50px_rgba(79,70,229,0.3)] hover:bg-indigo-500 transition-all border border-white/20 active:scale-95">
-              {loading ? "Consulting Stars..." : "Generate Cosmic Synthesis"}
+              {loading ? "Channeling..." : "Generate Synthesis"}
             </button>
             {reading && (
-              <div className="glass rounded-[2rem] p-8 text-sm leading-relaxed whitespace-pre-wrap max-h-[400px] overflow-y-auto custom-scrollbar border border-white/10 animate-in fade-in slide-in-from-bottom-4 duration-500">
+              <div className="glass rounded-[2rem] p-8 text-sm leading-relaxed whitespace-pre-wrap max-h-[400px] overflow-y-auto custom-scrollbar border border-white/10 animate-in fade-in slide-in-from-bottom-4">
                 <div className="text-indigo-400 text-[10px] font-black uppercase mb-4 tracking-widest">Oracle Proclamation</div>
                 {reading}
               </div>
@@ -384,14 +308,28 @@ const App: React.FC = () => {
           </div>
         </div>
       ) : (
-        <ChatInterface 
-          chatHistory={appState.chatHistory} 
-          onSendMessage={handleSendMessage} 
-          loading={loading} 
-          onBackToForm={() => setIsChatMode(false)} 
-          onClearChat={() => setAppState(p => ({...p, chatHistory: []}))} 
-          isFirebaseSynced={isFirebaseSynced} 
-        />
+        <div className="flex flex-col h-[75vh] glass rounded-3xl overflow-hidden shadow-2xl border border-white/10">
+          <div className="px-6 py-4 bg-white/5 border-b border-white/10 flex justify-between items-center">
+            <h2 className="text-lg font-bold text-white leading-tight">Cosmic Oracle</h2>
+            <button onClick={() => setAppState(p => ({...p, chatHistory: []}))} className="px-3 py-1.5 text-xs text-gray-400 hover:text-white">Clear</button>
+          </div>
+          <div className="flex-1 overflow-y-auto p-6 space-y-4 custom-scrollbar bg-black/10">
+            {appState.chatHistory.map((msg, i) => (
+              <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                <div className={`max-w-[85%] px-5 py-3 rounded-2xl border ${msg.role === 'user' ? 'bg-indigo-600/20 border-indigo-500/30' : 'bg-white/5 border-white/10 text-gray-200'}`}>
+                  <p className="text-sm whitespace-pre-wrap">{msg.text}</p>
+                </div>
+              </div>
+            ))}
+            {loading && <div className="text-xs text-indigo-400 animate-pulse">Consulting Akasha...</div>}
+            <div ref={chatEndRef} />
+          </div>
+          <div className="p-4 bg-white/5 border-t border-white/10">
+             <div className="relative flex items-center">
+                <input type="text" onKeyDown={e => { if(e.key === 'Enter') handleSendMessage((e.target as HTMLInputElement).value); }} placeholder="Ask the Oracle..." className="w-full bg-black/40 border border-white/10 rounded-2xl py-4 px-6 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50" />
+             </div>
+          </div>
+        </div>
       )}
     </div>
   );
