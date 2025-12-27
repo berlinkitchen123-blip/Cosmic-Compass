@@ -5,10 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Cosmic Compass | AI Astrology & Numerology</title>
     <script>
-      // Safer shim for process.env to prevent ReferenceErrors without overwriting injected values
-      window.process = window.process || {};
-      window.process.env = window.process.env || {};
-      window.process.env.API_KEY = window.process.env.API_KEY || "";
+      // Robust shim for process.env to prevent ReferenceErrors on static hosts
+      window.process = window.process || { env: { API_KEY: "" } };
     </script>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:ital,wght@0,700;1,700&display=swap" rel="stylesheet">
@@ -77,7 +75,6 @@
   }
 }
 </script>
-
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 </head>
 <body class="text-gray-100 min-h-screen selection:bg-indigo-500/30">
@@ -101,12 +98,6 @@
           }
         }
     </script>
-
-    <script 
-        type="text/babel" 
-        data-type="module" 
-        data-presets="typescript,react" 
-        src="index.tsx"
-    ></script>
+    <script type="text/babel" data-type="module" data-presets="typescript,react" src="index.tsx"></script>
 </body>
 </html>

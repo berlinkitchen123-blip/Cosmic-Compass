@@ -1,4 +1,3 @@
-
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import ReactDOM from 'react-dom/client';
 import { GoogleGenAI, Chat, GenerateContentResponse } from "@google/genai";
@@ -12,6 +11,7 @@ interface BirthDetails {
   dob: string;
   tob: string;
   pob: string;
+  rashi?: string;
 }
 
 interface LifeEvent {
@@ -32,6 +32,7 @@ interface AppState {
   chatHistory: ChatMessage[];
   enableGoogleSearch: boolean;
   isChatMode: boolean;
+  specialNotes: string;
 }
 
 // --- Global Interface Extension ---
@@ -41,8 +42,8 @@ declare global {
     openSelectKey: () => Promise<void>;
   }
   interface Window {
-    // Removed readonly to avoid "identical modifiers" conflict with other declarations
-    aistudio: AIStudio;
+    // Fix: Added optional modifier to match environment declaration to avoid 'identical modifiers' error
+    aistudio?: AIStudio;
   }
 }
 
@@ -50,7 +51,7 @@ declare global {
 
 const LATEST_FLASH_MODEL = 'gemini-3-flash-preview';
 const LATEST_PRO_MODEL = 'gemini-3-pro-preview';
-const MASTER_STORAGE_KEY = 'cosmic_compass_v3_final';
+const MASTER_STORAGE_KEY = 'cosmic_compass_v3_final_safe';
 const PLANETS = ['Sun', 'Moon', 'Mars', 'Mercury', 'Jupiter', 'Venus', 'Saturn', 'Rahu', 'Ketu'];
 
 // --- Firebase Service ---
@@ -103,7 +104,7 @@ function buildAstrologyPrompt(
     : `Generate a Full Navagraha Synthesis & Willpower Analysis. Date: ${dateString}.`;
 
   if (outputLanguage === 'Gujarati') {
-    prompt += ` Respond ONLY in Gujarati. Use high-level Vedic vocabulary.`;
+    prompt += ` Respond ONLY in Gujarati. Use high-level Vedic vocabulary. Always mention years 2030, 2040, 2050.`;
   } else {
     prompt += ` Respond in English. Use a mystical yet professional tone.`;
   }
@@ -113,12 +114,12 @@ function buildAstrologyPrompt(
 - Birth: ${birthDetails.dob} at ${birthDetails.tob} in ${birthDetails.pob}
 
 THE 9-5-1 WILLPOWER LINE:
-- Analyze the 9 (Mars), 5 (Mercury), 1 (Sun) grid for leadership resilience.
+- Analyze the 9 (Mars), 5 (Mercury), 1 (Sun) grid for high-level manifestation and leadership resilience.
 
 NAVAGRAHA MAPPING:
-${lifeEvents.map(e => `- ${e.planet || 'Unspecified'} Node (${e.date}): ${e.description}`).join('\n')}
+${lifeEvents.map(e => `- ${e.planet || 'Unspecified Graha'} Node (${e.date}): ${e.description}`).join('\n')}
 
-Format: Markdown.`;
+Format: Markdown. Tone: Visionary.`;
   return prompt;
 }
 
@@ -140,7 +141,7 @@ const InputField: React.FC<{ label: string; id: string; type: string; value: str
 // --- Main App ---
 
 const DEFAULT_STATE: AppState = {
-  birthDetails: { name: 'Harshkumar Panubhai Patel', dob: '1995-01-17', tob: '15:58', pob: 'Vadodara, Gujarat, India' },
+  birthDetails: { name: 'Harshkumar Panubhai Patel', dob: '1995-01-17', tob: '15:58', pob: 'Vadodara, Gujarat, India', rashi: 'Cancer' },
   lifeEvents: [
     { date: '1995-01-17', description: 'Birth in Vadodara, Gujarat - Sun Node', planet: 'Sun' },
     { date: '2021-12-10', description: 'Engagement ceremony with Pankti Patel', planet: 'Venus' },
@@ -150,7 +151,8 @@ const DEFAULT_STATE: AppState = {
   outputLanguage: 'Gujarati',
   chatHistory: [],
   enableGoogleSearch: true,
-  isChatMode: false
+  isChatMode: false,
+  specialNotes: 'Active 9-5-1 Axis'
 };
 
 const App: React.FC = () => {
@@ -175,7 +177,7 @@ const App: React.FC = () => {
     checkKey();
   }, []);
 
-  // Firebase Sync
+  // Firebase Recovery
   useEffect(() => {
     const initCloud = async () => {
       try {
@@ -200,25 +202,25 @@ const App: React.FC = () => {
 
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [appState.chatHistory]);
 
-  const validateAndInitAI = async () => {
+  const ensureApiKey = async () => {
     if (!process.env.API_KEY || process.env.API_KEY.length < 5) {
       if (window.aistudio) {
         await window.aistudio.openSelectKey();
-        // Platform will inject the key into process.env.API_KEY
         setHasApiKey(true);
-        return new GoogleGenAI({ apiKey: process.env.API_KEY });
+        return true;
       }
-      return null;
+      return false;
     }
-    return new GoogleGenAI({ apiKey: process.env.API_KEY });
+    return true;
   };
 
   const handleGenerateReading = async () => {
+    const ready = await ensureApiKey();
+    if (!ready) { alert("Please configure an API Key to proceed."); return; }
+
     setLoading(true);
     try {
-      const ai = await validateAndInitAI();
-      if (!ai) throw new Error("API Key required.");
-      
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       const res = await ai.models.generateContent({
         model: LATEST_PRO_MODEL,
         contents: buildAstrologyPrompt(appState.birthDetails, appState.lifeEvents, appState.outputLanguage),
@@ -237,11 +239,12 @@ const App: React.FC = () => {
 
   const handleSendMessage = async (text: string) => {
     if (!text.trim()) return;
+    const ready = await ensureApiKey();
+    if (!ready) return;
+
     setLoading(true);
     try {
-      const ai = await validateAndInitAI();
-      if (!ai) throw new Error("API Key required.");
-
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       if (!chatSessionRef.current) {
         chatSessionRef.current = ai.chats.create({
           model: LATEST_FLASH_MODEL,
@@ -272,7 +275,7 @@ const App: React.FC = () => {
             {isFirebaseSynced ? 'Cloud Synced' : 'Sync Pending'}
           </div>
           {!hasApiKey && (
-             <button onClick={() => window.aistudio?.openSelectKey()} className="px-4 py-1.5 rounded-full bg-indigo-600/20 border border-indigo-500/30 text-indigo-300 text-[10px] font-black uppercase tracking-widest">Connect to Oracle</button>
+             <button onClick={() => window.aistudio?.openSelectKey()} className="px-4 py-1.5 rounded-full bg-red-500/20 border border-red-500/30 text-red-300 text-[10px] font-black uppercase tracking-widest animate-pulse">Connect to Oracle</button>
           )}
           <select value={appState.outputLanguage} onChange={e => setAppState(p => ({...p, outputLanguage: e.target.value}))} className="bg-white/5 border border-white/10 rounded-full px-4 py-1.5 text-[10px] font-bold text-indigo-300 outline-none uppercase tracking-widest cursor-pointer hover:bg-white/10 transition-colors">
             <option value="English">English</option>
@@ -299,6 +302,16 @@ const App: React.FC = () => {
                 <InputField label="Time" id="t" type="time" value={appState.birthDetails.tob} onChange={e => setAppState(p => ({...p, birthDetails: {...p.birthDetails, tob: e.target.value}}))} />
               </div>
               <InputField label="Birth Place" id="p" type="text" value={appState.birthDetails.pob} onChange={e => setAppState(p => ({...p, birthDetails: {...p.birthDetails, pob: e.target.value}}))} />
+            </section>
+            
+            <section className="glass rounded-[2rem] p-8 border border-white/10 shadow-xl">
+               <h2 className="font-serif text-2xl text-white mb-6">Willpower Axis (9-5-1)</h2>
+               <div className="grid grid-cols-3 gap-2 p-2 bg-black/20 rounded-xl">
+                  {[4,9,2,3,5,7,8,1,6].map(num => (
+                    <div key={num} className={`aspect-square flex items-center justify-center rounded-lg font-black transition-all ${[9,5,1].includes(num) ? 'bg-indigo-600 text-white shadow-[0_0_15px_rgba(79,70,229,0.5)] border-indigo-400 border' : 'bg-white/5 text-gray-700/50'}`}>{num}</div>
+                  ))}
+               </div>
+               <p className="mt-4 text-[10px] text-indigo-400 font-bold uppercase tracking-widest text-center">Active Potential Detected</p>
             </section>
           </div>
           
@@ -331,6 +344,7 @@ const App: React.FC = () => {
             </button>
             {reading && (
               <div className="glass rounded-[2rem] p-8 text-sm leading-relaxed whitespace-pre-wrap max-h-[400px] overflow-y-auto custom-scrollbar border border-white/10 shadow-inner">
+                <div className="text-indigo-400 text-[10px] font-black uppercase mb-4 tracking-widest border-b border-indigo-400/20 pb-2">Roadmap 2030-2050</div>
                 {reading}
               </div>
             )}
@@ -340,6 +354,7 @@ const App: React.FC = () => {
         <div className="flex flex-col h-[75vh] glass rounded-3xl overflow-hidden shadow-2xl border border-white/10 animate-in zoom-in-95 duration-300">
           <div className="px-6 py-4 bg-white/5 border-b border-white/10 flex justify-between items-center">
             <h2 className="text-lg font-bold text-white leading-tight">Cosmic Oracle</h2>
+            <button onClick={() => setAppState(p => ({...p, chatHistory: []}))} className="px-3 py-1.5 text-xs text-gray-400 hover:text-white transition-colors">Clear History</button>
           </div>
           <div className="flex-1 overflow-y-auto p-6 space-y-4 custom-scrollbar bg-black/10">
             {appState.chatHistory.map((msg, i) => (
@@ -355,7 +370,7 @@ const App: React.FC = () => {
           <div className="p-4 bg-white/5 border-t border-white/10">
              <input 
                type="text" 
-               onKeyDown={e => { if(e.key === 'Enter') handleSendMessage((e.target as HTMLInputElement).value); (e.target as HTMLInputElement).value = ''; }} 
+               onKeyDown={e => { if(e.key === 'Enter') { handleSendMessage((e.target as HTMLInputElement).value); (e.target as HTMLInputElement).value = ''; } }} 
                placeholder="Ask the Oracle..." 
                className="w-full bg-black/40 border border-white/10 rounded-2xl py-4 px-6 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50" 
              />
