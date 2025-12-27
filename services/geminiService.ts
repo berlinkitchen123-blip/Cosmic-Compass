@@ -1,3 +1,4 @@
+
 import { GoogleGenAI, Chat, GenerateContentResponse } from "@google/genai";
 import { BirthDetails, ReadingOptions, AdvancedReadingOptions, LifeEvent, SpouseDetails, ApiResponse, Visuals, ChatMessage } from "../types";
 
@@ -15,39 +16,37 @@ function buildAstrologyPrompt(
   const dateString = today.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 
   let prompt = isChatContext 
-    ? `You are the "Universal Siddhanta Oracle", a master of synthesizing Western Astrology, Vedic Jyotish, Chaldean Numerology, and daily Rashifal transitions. You have access to physical Samudrika Shastra artifacts (face/palm images). Respond with deep spiritual resonance and practical clarity.`
-    : `Generate a Comprehensive Cosmic Synthesis Report. Current Date: ${dateString}.`;
+    ? `You are the "Siddhanta Oracle". You analyze the 9 Planets (Navagraha) and the 9-5-1 Willpower Axis (Mars-Mercury-Sun) as found in charts of leaders like Narendra Modi. You have no limits on time—project into 2030, 2040, and 2050.`
+    : `Generate a Full Navagraha Synthesis & Willpower Analysis. Date: ${dateString}.`;
 
   if (outputLanguage === 'Gujarati') {
-    prompt += ` Respond ONLY in Gujarati. Use sophisticated terminology from the Vedas and Puranas.`;
+    prompt += ` Respond ONLY in Gujarati. Use high-level Vedic vocabulary.`;
   } else {
-    prompt += ` Respond in English.`;
+    prompt += ` Respond in English. Use a mystical yet professional tone.`;
   }
 
-  prompt += `\n\nSUBJECT DATA:
+  prompt += `\n\nCORE SUBJECT:
 - Name: ${birthDetails.name}
 - Birth: ${birthDetails.dob} at ${birthDetails.tob} in ${birthDetails.pob}
-- Current Rashi: ${birthDetails.rashi || 'Calculate based on TOB/DOB'}
-${exSpouseDetails?.name ? `- Former Karmic Partner: ${exSpouseDetails.name} (Born ${exSpouseDetails.dob})` : ''}
+- Rashi: ${birthDetails.rashi || 'Calculate'}
 
-SPECIAL ATTRIBUTES:
-- User observes a "9, 5, 1" numerology system (Willpower Line). Compare this to the high-achievement charts of leaders like Narendra Modi or Mukesh Ambani. Analyze the dominance of Mars (9), Mercury (5), and Sun (1).
+THE 9-5-1 WILLPOWER LINE (NUMEROLOGY):
+- This subject has a 9-5-1 structure. 9 (Mars - Action), 5 (Mercury - Intellect), 1 (Sun - Soul/Power). This is the "Willpower Line" of top achievers. Analyze the resilience and manifestation power of this axis.
 
-PHYSICAL ARTIFACTS:
-${visuals?.face ? "- Face Analysis: Present. Focus on the 12 Houses of the Face and spiritual aura." : "- Face: Not provided."}
-${visuals?.leftHand ? "- Left Palm: Present. Analyze the Mount of Moon and Heart Line." : "- Left Palm: Not provided."}
-${visuals?.rightHand ? "- Right Palm: Present. Analyze the Life Line and Fate Line." : "- Right Palm: Not provided."}
+NAVAGRAHA MAPPING (9 PLANETS):
+Analyze the interaction of these 9 Graha nodes from the subject's timeline:
+${lifeEvents.map(e => `- ${e.planet || 'Unspecified Graha'} Node (${e.date}): ${e.description}`).join('\n')}
 
-LIFE TIMELINE (Karmic Anchors):
-${lifeEvents.map(e => `- ${e.date}: ${e.description}`).join('\n')}
+TEMPORAL PROJECTION:
+- Do not restrict analysis to the current year. Provide a roadmap for 2030, 2040, and 2050 based on Shani (Saturn) and Guru (Jupiter) transits.
 
-REQUIRED STRUCTURE:
-1. **VEDIC JYOTISH & LONG-TERM DASHAS**: Analyze current Mahadasha. Project significant shifts into 2030, 2035, and 2040. Do not limit to near-term.
-2. **THE 9-5-1 WILLPOWER LINE**: Deeply analyze the numerological impact of the 9-5-1 combination. How does this drive authority, communication, and resilience?
-3. **ASTROLOGY (Western & Planetary)**: Synthesis of outer planetary transits (Pluto, Neptune, Uranus) over the next 15 years.
-4. **RASHIFAL & REMEDIES**: Strategic remedies for long-term obstacles identified in the dashas.
+REQUIREMENTS:
+1. **Navagraha Synthesis**: Deep dive into all 9 planets.
+2. **Willpower Analysis**: Specific section on the 9-5-1 combination.
+3. **Decadal Roadmap**: Future peaks in 2030, 2040, 2050.
+4. **Remedies**: For afflicted grahas among the 9.
 
-Tone: Authoritative, mystical, and visionary. Format: Use Markdown.`;
+Format: Markdown. Tone: Visionary.`;
 
   return prompt;
 }
@@ -89,12 +88,11 @@ export async function getCombinedReading(
       contents: { parts },
       config: { 
         temperature: 0.7, 
-        topP: 0.95,
         tools: enableGoogleSearch ? [{ googleSearch: {} }] : undefined
       },
     });
     return { 
-      reading: response.text || "The cosmic silence is absolute. Try again.", 
+      reading: response.text || "Cosmic signal lost.", 
       groundingSources: response.candidates?.[0]?.groundingMetadata?.groundingChunks || [] 
     };
   } catch (error: any) {
@@ -121,18 +119,6 @@ export async function initializeChatSession(
     role: msg.role === 'user' ? 'user' : 'model',
     parts: [{ text: msg.text }]
   }));
-
-  if (visuals && (visuals.face || visuals.leftHand || visuals.rightHand)) {
-    const visionParts: any[] = [{ text: "Context: These are my physical signs for your Samudrika analysis." }];
-    if (visuals.face) visionParts.push(getPartFromImage(visuals.face));
-    if (visuals.leftHand) visionParts.push(getPartFromImage(visuals.leftHand));
-    if (visuals.rightHand) visionParts.push(getPartFromImage(visuals.rightHand));
-    
-    geminiHistory.unshift(
-      { role: 'user', parts: visionParts },
-      { role: 'model', parts: [{ text: "I have observed your physical manifestations. My vision is now aligned with your path." }] }
-    );
-  }
 
   return ai.chats.create({
     model: LATEST_FLASH_MODEL,

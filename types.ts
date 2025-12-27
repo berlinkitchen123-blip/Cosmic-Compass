@@ -1,5 +1,4 @@
 
-
 export interface BirthDetails {
   name: string;
   dob: string; // YYYY-MM-DD
@@ -28,6 +27,7 @@ export interface AdvancedReadingOptions {
 export interface LifeEvent {
   description: string;
   date: string; // YYYY-MM-DD
+  planet?: string; // Associated Graha (Sun, Moon, Mars, etc.)
 }
 
 export interface SpouseDetails {
@@ -43,7 +43,6 @@ export interface Visuals {
 
 export interface ApiResponse {
   reading: string;
-  // Loosened type to any[] to accommodate the GroundingChunk structure from the Gemini API
   groundingSources?: any[];
 }
 
