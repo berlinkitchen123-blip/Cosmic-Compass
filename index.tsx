@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import ReactDOM from 'react-dom/client';
-import { GoogleGenAI, Chat, GenerateContentResponse } from "@google/genai";
+import { GoogleGenAI, Chat } from "@google/genai";
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getDatabase, ref, set, get } from 'firebase/database';
 import { 
@@ -23,7 +23,7 @@ const FIREBASE_CONFIG = {
 };
 
 const PLANETS = ['Sun', 'Moon', 'Mars', 'Mercury', 'Jupiter', 'Venus', 'Saturn', 'Rahu', 'Ketu'];
-const MASTER_STORAGE_KEY = 'cosmic_compass_master_v14_final';
+const MASTER_STORAGE_KEY = 'cosmic_compass_master_v15_final';
 
 // --- Types ---
 interface BirthDetails {
