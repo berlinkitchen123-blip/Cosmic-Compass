@@ -5,8 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Cosmic Compass | AI Astrology & Numerology</title>
     <script>
-      // Defensive shim to prevent ReferenceError: process is not defined
-      window.process = window.process || { env: { API_KEY: "" } };
+      // Safer shim for process.env to prevent ReferenceErrors without overwriting injected values
+      window.process = window.process || {};
+      window.process.env = window.process.env || {};
+      window.process.env.API_KEY = window.process.env.API_KEY || "";
     </script>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:ital,wght@0,700;1,700&display=swap" rel="stylesheet">

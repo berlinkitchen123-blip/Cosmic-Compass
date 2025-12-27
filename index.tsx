@@ -12,7 +12,6 @@ interface BirthDetails {
   dob: string;
   tob: string;
   pob: string;
-  rashi?: string; 
 }
 
 interface LifeEvent {
@@ -32,20 +31,18 @@ interface AppState {
   outputLanguage: string;
   chatHistory: ChatMessage[];
   enableGoogleSearch: boolean;
-  specialNotes: string;
   isChatMode: boolean;
 }
 
 // --- Global Interface Extension ---
-// Fix: Use the global AIStudio interface type and apply 'readonly' modifier to match environment requirements.
 declare global {
   interface AIStudio {
     hasSelectedApiKey: () => Promise<boolean>;
     openSelectKey: () => Promise<void>;
   }
-
   interface Window {
-    readonly aistudio: AIStudio;
+    // Removed readonly to avoid "identical modifiers" conflict with other declarations
+    aistudio: AIStudio;
   }
 }
 
@@ -53,7 +50,7 @@ declare global {
 
 const LATEST_FLASH_MODEL = 'gemini-3-flash-preview';
 const LATEST_PRO_MODEL = 'gemini-3-pro-preview';
-const MASTER_STORAGE_KEY = 'cosmic_compass_v3_unified_safe';
+const MASTER_STORAGE_KEY = 'cosmic_compass_v3_final';
 const PLANETS = ['Sun', 'Moon', 'Mars', 'Mercury', 'Jupiter', 'Venus', 'Saturn', 'Rahu', 'Ketu'];
 
 // --- Firebase Service ---
@@ -102,11 +99,11 @@ function buildAstrologyPrompt(
   const dateString = today.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 
   let prompt = isChatContext 
-    ? `You are the "Siddhanta Oracle". You analyze the 9 Planets (Navagraha) and the 9-5-1 Willpower Axis (Mars-Mercury-Sun). Analyze manifestation peaks for 2030, 2040, and 2050.`
+    ? `You are the "Siddhanta Oracle". You analyze Navagraha (9 Planets) and the 9-5-1 Willpower Axis. Provide a roadmap for 2030, 2040, and 2050.`
     : `Generate a Full Navagraha Synthesis & Willpower Analysis. Date: ${dateString}.`;
 
   if (outputLanguage === 'Gujarati') {
-    prompt += ` Respond ONLY in Gujarati. Use high-level Vedic vocabulary. Always provide specific years like 2030, 2040, and 2050 in the roadmap.`;
+    prompt += ` Respond ONLY in Gujarati. Use high-level Vedic vocabulary.`;
   } else {
     prompt += ` Respond in English. Use a mystical yet professional tone.`;
   }
@@ -116,12 +113,12 @@ function buildAstrologyPrompt(
 - Birth: ${birthDetails.dob} at ${birthDetails.tob} in ${birthDetails.pob}
 
 THE 9-5-1 WILLPOWER LINE:
-- Analyze the 9 (Mars), 5 (Mercury), 1 (Sun) grid for high-level manifestation and leadership resilience.
+- Analyze the 9 (Mars), 5 (Mercury), 1 (Sun) grid for leadership resilience.
 
 NAVAGRAHA MAPPING:
 ${lifeEvents.map(e => `- ${e.planet || 'Unspecified'} Node (${e.date}): ${e.description}`).join('\n')}
 
-Format: Markdown. Tone: Visionary. Focus on long-term projections.`;
+Format: Markdown.`;
   return prompt;
 }
 
@@ -143,27 +140,16 @@ const InputField: React.FC<{ label: string; id: string; type: string; value: str
 // --- Main App ---
 
 const DEFAULT_STATE: AppState = {
-  birthDetails: { name: 'Harshkumar Panubhai Patel', dob: '1995-01-17', tob: '15:58', pob: 'Vadodara, Gujarat, India', rashi: 'Cancer' },
+  birthDetails: { name: 'Harshkumar Panubhai Patel', dob: '1995-01-17', tob: '15:58', pob: 'Vadodara, Gujarat, India' },
   lifeEvents: [
     { date: '1995-01-17', description: 'Birth in Vadodara, Gujarat - Sun Node', planet: 'Sun' },
-    { date: '2012-05-15', description: 'Completed High School Education', planet: 'Mercury' },
-    { date: '2013-08-20', description: 'Started Engineering Bachelor degree', planet: 'Jupiter' },
-    { date: '2017-06-10', description: 'Graduation and Entry into Professional Career', planet: 'Sun' },
-    { date: '2019-03-12', description: 'Shift in career focus and location', planet: 'Mars' },
-    { date: '2021-02-14', description: 'Significant spiritual realization and lifestyle change', planet: 'Moon' },
-    { date: '2021-08-24', description: 'Health crisis: Platelets dropped to 10k (Karmic Node)', planet: 'Saturn' },
     { date: '2021-12-10', description: 'Engagement ceremony with Pankti Patel', planet: 'Venus' },
     { date: '2022-01-04', description: 'Married Pankti Patel (Astro Union)', planet: 'Venus' },
-    { date: '2023-05-15', description: 'Significant career advancement/promotion', planet: 'Mercury' },
-    { date: '2024-06-20', description: 'Preparation for International Migration', planet: 'Rahu' },
-    { date: '2024-11-06', description: 'Moved to Germany (Transcontinental Transit)', planet: 'Rahu' },
-    { date: '2025-01-01', description: 'Stable residency and new professional phase', planet: 'Saturn' },
-    { date: '2025-05-01', description: 'Future Growth: Family and Wealth Focus', planet: 'Jupiter' }
+    { date: '2024-11-06', description: 'Moved to Germany (Transcontinental Transit)', planet: 'Rahu' }
   ],
   outputLanguage: 'Gujarati',
   chatHistory: [],
   enableGoogleSearch: true,
-  specialNotes: 'Active 9-5-1 Axis',
   isChatMode: false
 };
 
@@ -183,24 +169,19 @@ const App: React.FC = () => {
       if (process.env.API_KEY && process.env.API_KEY.length > 5) {
         setHasApiKey(true);
       } else if (window.aistudio) {
-        const selected = await window.aistudio.hasSelectedApiKey();
-        setHasApiKey(selected);
+        setHasApiKey(await window.aistudio.hasSelectedApiKey());
       }
     };
     checkKey();
   }, []);
 
-  // Sync with Cloud
+  // Firebase Sync
   useEffect(() => {
     const initCloud = async () => {
       try {
-        const userRef = ref(db, `users/${userId}`);
-        const snap = await get(userRef);
-        if (snap.exists()) {
-          setAppState(prev => ({ ...prev, ...snap.val() }));
-          setIsFirebaseSynced(true);
-        }
-      } catch (e) { console.error("Cloud Error", e); }
+        const snap = await get(ref(db, `users/${userId}`));
+        if (snap.exists()) setAppState(prev => ({ ...prev, ...snap.val() }));
+      } catch (e) { console.error("Cloud Access Error", e); }
     };
     initCloud();
   }, [userId]);
@@ -210,8 +191,7 @@ const App: React.FC = () => {
     saveLocal(appState);
     const timer = setTimeout(async () => {
       try {
-        const userRef = ref(db, `users/${userId}`);
-        await set(userRef, { ...appState, lastUpdated: new Date().toISOString() });
+        await set(ref(db, `users/${userId}`), { ...appState, lastUpdated: new Date().toISOString() });
         setIsFirebaseSynced(true);
       } catch { setIsFirebaseSynced(false); }
     }, 2000);
@@ -220,71 +200,66 @@ const App: React.FC = () => {
 
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [appState.chatHistory]);
 
-  const ensureApiKey = async () => {
+  const validateAndInitAI = async () => {
     if (!process.env.API_KEY || process.env.API_KEY.length < 5) {
       if (window.aistudio) {
         await window.aistudio.openSelectKey();
-        setHasApiKey(true); // Assume success per instructions
-        return true;
+        // Platform will inject the key into process.env.API_KEY
+        setHasApiKey(true);
+        return new GoogleGenAI({ apiKey: process.env.API_KEY });
       }
-      return false;
+      return null;
     }
-    return true;
+    return new GoogleGenAI({ apiKey: process.env.API_KEY });
   };
 
   const handleGenerateReading = async () => {
-    const ready = await ensureApiKey();
-    if (!ready) {
-      alert("Please configure an API Key to proceed.");
-      return;
-    }
-
     setLoading(true);
     try {
-      const ai = new GoogleGenAI({apiKey: process.env.API_KEY});
-      const prompt = buildAstrologyPrompt(appState.birthDetails, appState.lifeEvents, appState.outputLanguage);
+      const ai = await validateAndInitAI();
+      if (!ai) throw new Error("API Key required.");
+      
       const res = await ai.models.generateContent({
         model: LATEST_PRO_MODEL,
-        contents: prompt,
+        contents: buildAstrologyPrompt(appState.birthDetails, appState.lifeEvents, appState.outputLanguage),
         config: { tools: appState.enableGoogleSearch ? [{ googleSearch: {} }] : undefined },
       });
       setReading(res.text || '');
-    } catch (e: any) { 
-        console.error(e);
-        if (e.message?.includes("not found")) {
-          await window.aistudio.openSelectKey();
-        } else {
-          alert("Cosmic Alignment Error: " + e.message); 
-        }
+    } catch (e: any) {
+      console.error(e);
+      if (e.message?.includes("not found")) {
+        await window.aistudio?.openSelectKey();
+      } else {
+        alert("Cosmic Alignment Error: " + (e.message || "Unknown error"));
+      }
     } finally { setLoading(false); }
   };
 
   const handleSendMessage = async (text: string) => {
     if (!text.trim()) return;
-    const ready = await ensureApiKey();
-    if (!ready) return;
-
-    const ai = new GoogleGenAI({apiKey: process.env.API_KEY});
-    if (!chatSessionRef.current) {
-      chatSessionRef.current = ai.chats.create({
-        model: LATEST_FLASH_MODEL,
-        config: { 
-          systemInstruction: buildAstrologyPrompt(appState.birthDetails, appState.lifeEvents, appState.outputLanguage, true),
-          tools: appState.enableGoogleSearch ? [{ googleSearch: {} }] : undefined
-        },
-      });
-    }
-
-    const newHist: ChatMessage[] = [...appState.chatHistory, { role: 'user', text }];
-    setAppState(prev => ({ ...prev, chatHistory: newHist }));
     setLoading(true);
-
     try {
+      const ai = await validateAndInitAI();
+      if (!ai) throw new Error("API Key required.");
+
+      if (!chatSessionRef.current) {
+        chatSessionRef.current = ai.chats.create({
+          model: LATEST_FLASH_MODEL,
+          config: { 
+            systemInstruction: buildAstrologyPrompt(appState.birthDetails, appState.lifeEvents, appState.outputLanguage, true),
+            tools: appState.enableGoogleSearch ? [{ googleSearch: {} }] : undefined
+          },
+        });
+      }
+
+      const newHist: ChatMessage[] = [...appState.chatHistory, { role: 'user', text }];
+      setAppState(prev => ({ ...prev, chatHistory: newHist }));
+      
       const result = await chatSessionRef.current.sendMessage({ message: text });
       setAppState(prev => ({ ...prev, chatHistory: [...newHist, { role: 'model', text: result.text || '' }] }));
-    } catch (e: any) { 
-        console.error(e);
-        alert("Oracle Disconnected: " + e.message); 
+    } catch (e: any) {
+      console.error(e);
+      alert("Oracle Disconnected: " + e.message);
     } finally { setLoading(false); }
   };
 
@@ -297,9 +272,7 @@ const App: React.FC = () => {
             {isFirebaseSynced ? 'Cloud Synced' : 'Sync Pending'}
           </div>
           {!hasApiKey && (
-            <button onClick={() => window.aistudio.openSelectKey()} className="px-4 py-1.5 rounded-full bg-red-500/20 border border-red-500/30 text-red-300 text-[10px] font-black uppercase tracking-widest animate-pulse">
-              Connect to Oracle
-            </button>
+             <button onClick={() => window.aistudio?.openSelectKey()} className="px-4 py-1.5 rounded-full bg-indigo-600/20 border border-indigo-500/30 text-indigo-300 text-[10px] font-black uppercase tracking-widest">Connect to Oracle</button>
           )}
           <select value={appState.outputLanguage} onChange={e => setAppState(p => ({...p, outputLanguage: e.target.value}))} className="bg-white/5 border border-white/10 rounded-full px-4 py-1.5 text-[10px] font-bold text-indigo-300 outline-none uppercase tracking-widest cursor-pointer hover:bg-white/10 transition-colors">
             <option value="English">English</option>
@@ -327,22 +300,12 @@ const App: React.FC = () => {
               </div>
               <InputField label="Birth Place" id="p" type="text" value={appState.birthDetails.pob} onChange={e => setAppState(p => ({...p, birthDetails: {...p.birthDetails, pob: e.target.value}}))} />
             </section>
-            
-            <section className="glass rounded-[2rem] p-8 border border-white/10 shadow-xl">
-               <h2 className="font-serif text-2xl text-white mb-6">Willpower Axis (9-5-1)</h2>
-               <div className="grid grid-cols-3 gap-2 p-2 bg-black/20 rounded-xl">
-                  {[4,9,2,3,5,7,8,1,6].map(num => (
-                    <div key={num} className={`aspect-square flex items-center justify-center rounded-lg font-black transition-all ${[9,5,1].includes(num) ? 'bg-indigo-600 text-white shadow-[0_0_15px_rgba(79,70,229,0.5)]' : 'bg-white/5 text-gray-700/50'}`}>{num}</div>
-                  ))}
-               </div>
-               <p className="mt-4 text-[10px] text-indigo-400 font-bold uppercase tracking-widest text-center">Active High-Achievement Potential</p>
-            </section>
           </div>
           
           <div className="lg:col-span-4">
             <section className="glass rounded-[2rem] p-8 flex flex-col min-h-[500px] border border-white/10 shadow-2xl">
               <div className="flex justify-between items-center mb-6">
-                <h2 className="font-serif text-2xl text-white">Timeline (14 Events)</h2>
+                <h2 className="font-serif text-2xl text-white">Timeline</h2>
                 <button onClick={() => setAppState(p => ({...p, lifeEvents: [...p.lifeEvents, {date: '', description: '', planet: 'Mars'}]}))} className="w-8 h-8 rounded-full bg-indigo-600 text-white flex items-center justify-center font-bold hover:scale-110 active:scale-95 transition-all">+</button>
               </div>
               <div className="space-y-4 overflow-y-auto custom-scrollbar flex-1 pr-2">
@@ -363,12 +326,11 @@ const App: React.FC = () => {
           </div>
           
           <div className="lg:col-span-4 space-y-6">
-            <button onClick={handleGenerateReading} disabled={loading} className="w-full py-12 bg-indigo-600 rounded-[2rem] text-white font-bold text-xl shadow-[0_20px_50px_rgba(79,70,229,0.3)] hover:bg-indigo-500 transition-all border border-white/20 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed">
+            <button onClick={handleGenerateReading} disabled={loading} className="w-full py-12 bg-indigo-600 rounded-[2rem] text-white font-bold text-xl shadow-[0_20px_50px_rgba(79,70,229,0.3)] hover:bg-indigo-500 transition-all border border-white/20 active:scale-95 disabled:opacity-50">
               {loading ? "Aligning Stars..." : "Generate Projections"}
             </button>
             {reading && (
-              <div className="glass rounded-[2rem] p-8 text-sm leading-relaxed whitespace-pre-wrap max-h-[400px] overflow-y-auto custom-scrollbar border border-white/10 animate-in fade-in slide-in-from-bottom-4 shadow-inner">
-                <div className="text-indigo-400 text-[10px] font-black uppercase mb-4 tracking-widest border-b border-indigo-400/20 pb-2">Oracle Roadmap 2030-2050</div>
+              <div className="glass rounded-[2rem] p-8 text-sm leading-relaxed whitespace-pre-wrap max-h-[400px] overflow-y-auto custom-scrollbar border border-white/10 shadow-inner">
                 {reading}
               </div>
             )}
@@ -378,33 +340,25 @@ const App: React.FC = () => {
         <div className="flex flex-col h-[75vh] glass rounded-3xl overflow-hidden shadow-2xl border border-white/10 animate-in zoom-in-95 duration-300">
           <div className="px-6 py-4 bg-white/5 border-b border-white/10 flex justify-between items-center">
             <h2 className="text-lg font-bold text-white leading-tight">Cosmic Oracle</h2>
-            <button onClick={() => setAppState(p => ({...p, chatHistory: []}))} className="px-3 py-1.5 text-xs text-gray-400 hover:text-white transition-colors">Clear History</button>
           </div>
           <div className="flex-1 overflow-y-auto p-6 space-y-4 custom-scrollbar bg-black/10">
-            {appState.chatHistory.length === 0 && (
-              <div className="h-full flex flex-col items-center justify-center text-gray-600 italic">
-                Ask the Oracle about your manifestation path...
-              </div>
-            )}
             {appState.chatHistory.map((msg, i) => (
-              <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-in slide-in-from-bottom-2`}>
+              <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                 <div className={`max-w-[85%] px-5 py-3 rounded-2xl border ${msg.role === 'user' ? 'bg-indigo-600/20 border-indigo-500/30 text-white' : 'bg-white/5 border-white/10 text-gray-200'}`}>
                   <p className="text-sm whitespace-pre-wrap">{msg.text}</p>
                 </div>
               </div>
             ))}
-            {loading && <div className="text-xs text-indigo-400 animate-pulse pl-4">Channeling Akashic Wisdom...</div>}
+            {loading && <div className="text-xs text-indigo-400 animate-pulse pl-4">Channeling...</div>}
             <div ref={chatEndRef} />
           </div>
           <div className="p-4 bg-white/5 border-t border-white/10">
-             <div className="relative flex items-center">
-                <input 
-                  type="text" 
-                  onKeyDown={e => { if(e.key === 'Enter') handleSendMessage((e.target as HTMLInputElement).value); }} 
-                  placeholder="Ask the Oracle..." 
-                  className="w-full bg-black/40 border border-white/10 rounded-2xl py-4 px-6 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all placeholder-gray-600" 
-                />
-             </div>
+             <input 
+               type="text" 
+               onKeyDown={e => { if(e.key === 'Enter') handleSendMessage((e.target as HTMLInputElement).value); (e.target as HTMLInputElement).value = ''; }} 
+               placeholder="Ask the Oracle..." 
+               className="w-full bg-black/40 border border-white/10 rounded-2xl py-4 px-6 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50" 
+             />
           </div>
         </div>
       )}
