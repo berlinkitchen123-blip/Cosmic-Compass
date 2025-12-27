@@ -1,7 +1,7 @@
 {
-  "name": "Cosmic Compass",
-  "description": "A web application that combines astrology, numerology, rashifal, and Jyotish principles to generate personalized insights based on birth details. Note: All readings are AI-generated for illustrative purposes and should not be taken as professional advice.",
   "requestFramePermissions": [
     "camera"
-  ]
+  ],
+  "name": "",
+  "description": ""
 }

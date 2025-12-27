@@ -10,7 +10,7 @@
         :root { --accent: #6366f1; --accent-glow: rgba(99, 102, 241, 0.4); }
         body {
             font-family: 'Inter', sans-serif;
-            background: radial-gradient(circle at top right, #0f172a, #020617);
+            background: radial-gradient(circle at top right, #020617, #0f172a, #020617);
             background-attachment: fixed;
             color: #f8fafc;
             overflow-x: hidden;
@@ -53,10 +53,10 @@
     <script>
         const container = document.getElementById('stars-container');
         if (container) {
-            for (let i = 0; i < 100; i++) {
+            for (let i = 0; i < 150; i++) {
                 const star = document.createElement('div');
                 star.className = 'absolute bg-white rounded-full twinkle';
-                const size = Math.random() * 2 + 1;
+                const size = Math.random() * 2 + 0.5;
                 star.style.width = size + 'px';
                 star.style.height = size + 'px';
                 star.style.left = Math.random() * 100 + '%';
