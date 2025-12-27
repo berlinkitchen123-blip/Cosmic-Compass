@@ -10,7 +10,6 @@ import {
 } from 'lucide-react';
 
 // --- Configuration ---
-const LATEST_PRO_MODEL = 'gemini-3-pro-preview';
 const FIREBASE_CONFIG = {
   apiKey: "AIzaSyDrFjYv2c322zzCMsgpVttjUz9lWDrBoUg",
   authDomain: "cosmic-compass-5fd5e.firebaseapp.com",
@@ -25,7 +24,7 @@ const PLANETS = ['Sun', 'Moon', 'Mars', 'Mercury', 'Jupiter', 'Venus', 'Saturn',
 const MASTER_STORAGE_KEY = 'cosmic_compass_master_v11';
 
 // --- Firebase Init ---
-// Consistent initialization on a single instance using explicit databaseURL.
+// Consolidating here ensures getDatabase side-effects are registered on the correct app instance.
 const app = getApps().length === 0 ? initializeApp(FIREBASE_CONFIG) : getApp();
 const db = getDatabase(app, FIREBASE_CONFIG.databaseURL);
 
@@ -69,7 +68,6 @@ const DEFAULT_STATE: AppState = {
 };
 
 // --- Helper Components ---
-
 const InputField = ({ label, type, value, onChange }: any) => (
   <div className="mb-4">
     <label className="block text-[10px] uppercase tracking-widest text-gray-400 font-black mb-1.5 px-1">{label}</label>
@@ -103,7 +101,7 @@ const App: React.FC = () => {
   const chatEndRef = useRef<HTMLDivElement>(null);
   const chatSessionRef = useRef<Chat | null>(null);
 
-  // Sync with Cloud
+  // Initial Cloud Load
   useEffect(() => {
     const initCloud = async () => {
       try {
@@ -116,6 +114,7 @@ const App: React.FC = () => {
     initCloud();
   }, [userId]);
 
+  // Debounced Sync Effect
   useEffect(() => {
     localStorage.setItem(MASTER_STORAGE_KEY, JSON.stringify(state));
     const timer = setTimeout(async () => {
@@ -149,7 +148,7 @@ const App: React.FC = () => {
     try {
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       const res = await ai.models.generateContent({
-        model: LATEST_PRO_MODEL,
+        model: 'gemini-3-pro-preview',
         contents: buildPrompt(false),
         config: { tools: [{ googleSearch: {} }] }
       });
@@ -169,7 +168,7 @@ const App: React.FC = () => {
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       if (!chatSessionRef.current) {
         chatSessionRef.current = ai.chats.create({
-          model: LATEST_PRO_MODEL,
+          model: 'gemini-3-pro-preview',
           config: { systemInstruction: buildPrompt(true) }
         });
       }
@@ -186,7 +185,7 @@ const App: React.FC = () => {
         <h1 className="font-serif text-6xl text-white font-black mb-4 tracking-tighter bg-clip-text text-transparent bg-gradient-to-b from-white via-indigo-200 to-indigo-500">Cosmic Compass</h1>
         <div className="flex justify-center items-center space-x-3">
           <div className={`px-4 py-1.5 rounded-full border text-[10px] font-black uppercase tracking-widest transition-all ${syncing ? 'bg-amber-500/10 border-amber-500/30 text-amber-400' : 'bg-indigo-500/10 border-indigo-500/30 text-indigo-400'}`}>
-            {syncing ? 'Synchronizing...' : 'Akashic Record Linked'}
+            {syncing ? 'Synchronizing...' : 'Akashic Sync Active'}
           </div>
           <select value={state.profile.language} onChange={e => setState(p => ({...p, profile: {...p.profile, language: e.target.value}}))} className="bg-white/5 border border-white/10 rounded-full px-4 py-1.5 text-[10px] font-bold text-indigo-300 uppercase outline-none cursor-pointer">
             <option value="English">English</option>
@@ -228,7 +227,7 @@ const App: React.FC = () => {
                   </div>
                 ))}
               </div>
-              <p className="text-[9px] text-gray-500 italic">Willpower Visualization</p>
+              <p className="text-[9px] text-gray-500 italic">Numerical Potency Visualization</p>
             </section>
           </div>
 
@@ -251,7 +250,7 @@ const App: React.FC = () => {
                          {PLANETS.map(p => <option key={p} value={p}>{p}</option>)}
                        </select>
                     </div>
-                    <textarea value={item.description} onChange={e => { const t = [...state.timeline]; t[i].description = e.target.value; setState(p => ({...p, timeline: t})); }} className="bg-transparent text-xs text-gray-300 w-full resize-none outline-none" rows={2} placeholder="Life event details..." />
+                    <textarea value={item.description} onChange={e => { const t = [...state.timeline]; t[i].description = e.target.value; setState(p => ({...p, timeline: t})); }} className="bg-transparent text-xs text-gray-300 w-full resize-none outline-none" rows={2} placeholder="Event description..." />
                   </div>
                 ))}
               </div>
