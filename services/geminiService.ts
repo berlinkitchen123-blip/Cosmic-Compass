@@ -1,10 +1,6 @@
-
-// services/geminiService.ts
-
 import { GoogleGenAI, Chat, GenerateContentResponse } from "@google/genai";
 import { BirthDetails, ReadingOptions, AdvancedReadingOptions, LifeEvent, SpouseDetails, ApiResponse, Visuals, ChatMessage } from "../types";
 
-// Helper to build the astrology prompt for both static readings and chat sessions.
 function buildAstrologyPrompt(
   birthDetails: BirthDetails,
   options: ReadingOptions,
@@ -19,38 +15,43 @@ function buildAstrologyPrompt(
   const dateString = today.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 
   let prompt = isChatContext 
-    ? `You are an Omni-Esoteric Master with "Cosmic Vision". You have been granted access to the user's facial features and palm prints. You must provide readings that synthesize visual evidence with planetary data. Respond to user queries with deep spiritual insight.`
-    : `Generate a holistic esoteric reading. You have visual artifacts (face/palms) and a detailed life timeline. Perform a deep-dive analysis. Current date: ${dateString}.`;
+    ? `You are the "Universal Siddhanta Oracle", a master of synthesizing Western Astrology, Vedic Jyotish, Chaldean Numerology, and daily Rashifal transitions. You have access to physical Samudrika Shastra artifacts (face/palm images). Respond with deep spiritual resonance and practical clarity.`
+    : `Generate a Comprehensive Cosmic Synthesis Report. Current Date: ${dateString}.`;
 
   if (outputLanguage === 'Gujarati') {
-    prompt += ` Respond ONLY in Gujarati. Use heavy spiritual and technical terms from Vedic Jyotish and Samudrika Shastra.`;
+    prompt += ` Respond ONLY in Gujarati. Use sophisticated terminology from the Vedas and Puranas.`;
+  } else {
+    prompt += ` Respond in English.`;
   }
 
-  prompt += `\n\nIdentity: ${birthDetails.name} (Born: ${birthDetails.dob}, ${birthDetails.tob}, ${birthDetails.pob})`;
-  
-  if (exSpouseDetails?.name) {
-    prompt += `\nKarmic Link: ${exSpouseDetails.name} (Separation/Divorce events included in timeline).`;
-  }
+  prompt += `\n\nSUBJECT DATA:
+- Name: ${birthDetails.name}
+- Birth: ${birthDetails.dob} at ${birthDetails.tob} in ${birthDetails.pob}
+- Current Rashi: ${birthDetails.rashi || 'Calculate based on TOB/DOB'}
+${exSpouseDetails?.name ? `- Former Karmic Partner: ${exSpouseDetails.name} (Born ${exSpouseDetails.dob})` : ''}
 
-  prompt += `\n\nVision Data Status:`;
-  if (visuals?.face) prompt += `\n- FACE IMAGE: PROVIDED. Analyze the 12 Palaces, the forehead (wisdom), and the eyes (spirit).`;
-  if (visuals?.leftHand || visuals?.rightHand) prompt += `\n- PALM IMAGES: PROVIDED. Analyze the Fate Line, Heart Line, and Mount of Saturn. Look for the "Girdle of Venus" or "Mystic Cross".`;
+SPECIAL ATTRIBUTES:
+- User observes a "9, 5, 1" numerology system (Willpower Line). Compare this to the high-achievement charts of leaders like Narendra Modi or Mukesh Ambani. Analyze the dominance of Mars (9), Mercury (5), and Sun (1).
 
-  if (lifeEvents.length > 0) {
-    prompt += `\n\nChronological Anchors (Timeline):`;
-    lifeEvents.forEach(e => prompt += `\n- ${e.description} (${e.date})`);
-  }
+PHYSICAL ARTIFACTS:
+${visuals?.face ? "- Face Analysis: Present. Focus on the 12 Houses of the Face and spiritual aura." : "- Face: Not provided."}
+${visuals?.leftHand ? "- Left Palm: Present. Analyze the Mount of Moon and Heart Line." : "- Left Palm: Not provided."}
+${visuals?.rightHand ? "- Right Palm: Present. Analyze the Life Line and Fate Line." : "- Right Palm: Not provided."}
 
-  prompt += `\n\nYour Task:
-1. Cross-reference the timeline with visual signs in the palm/face and planetary dashas.
-2. Provide a "Vision Insight" section specifically detailing what you see in the images.
-3. Offer Lal Kitab remedies based on the "Blind Planets" identified from their birth chart and facial features.
-4. Forecast the 2025-2027 period based on current planetary transitions.`;
+LIFE TIMELINE (Karmic Anchors):
+${lifeEvents.map(e => `- ${e.date}: ${e.description}`).join('\n')}
+
+REQUIRED STRUCTURE:
+1. **VEDIC JYOTISH & LONG-TERM DASHAS**: Analyze current Mahadasha. Project significant shifts into 2030, 2035, and 2040. Do not limit to near-term.
+2. **THE 9-5-1 WILLPOWER LINE**: Deeply analyze the numerological impact of the 9-5-1 combination. How does this drive authority, communication, and resilience?
+3. **ASTROLOGY (Western & Planetary)**: Synthesis of outer planetary transits (Pluto, Neptune, Uranus) over the next 15 years.
+4. **RASHIFAL & REMEDIES**: Strategic remedies for long-term obstacles identified in the dashas.
+
+Tone: Authoritative, mystical, and visionary. Format: Use Markdown.`;
 
   return prompt;
 }
 
-// Helper to convert base64 data URI to the part structure required by Gemini API.
 function getPartFromImage(dataUri: string) {
   const [header, data] = dataUri.split(',');
   const mimeType = header.match(/:(.*?);/)?.[1] || 'image/jpeg';
@@ -62,7 +63,6 @@ function getPartFromImage(dataUri: string) {
   };
 }
 
-// Using gemini-3-flash-preview as the default latest flash model.
 const LATEST_FLASH_MODEL = 'gemini-3-flash-preview';
 
 export async function getCombinedReading(
@@ -88,13 +88,13 @@ export async function getCombinedReading(
       model: LATEST_FLASH_MODEL,
       contents: { parts },
       config: { 
-        temperature: 0.75, 
+        temperature: 0.7, 
         topP: 0.95,
         tools: enableGoogleSearch ? [{ googleSearch: {} }] : undefined
       },
     });
     return { 
-      reading: response.text || "Cosmic silence.", 
+      reading: response.text || "The cosmic silence is absolute. Try again.", 
       groundingSources: response.candidates?.[0]?.groundingMetadata?.groundingChunks || [] 
     };
   } catch (error: any) {
@@ -118,19 +118,19 @@ export async function initializeChatSession(
   const systemInstruction = buildAstrologyPrompt(birthDetails, options, advancedOptions, lifeEvents, outputLanguage, exSpouseDetails, visuals, true);
 
   const geminiHistory: any[] = history.map(msg => ({
-    role: msg.role,
+    role: msg.role === 'user' ? 'user' : 'model',
     parts: [{ text: msg.text }]
   }));
 
   if (visuals && (visuals.face || visuals.leftHand || visuals.rightHand)) {
-    const visionParts: any[] = [{ text: "Context: These are my visual artifacts (face/palms) for your synthesis." }];
+    const visionParts: any[] = [{ text: "Context: These are my physical signs for your Samudrika analysis." }];
     if (visuals.face) visionParts.push(getPartFromImage(visuals.face));
     if (visuals.leftHand) visionParts.push(getPartFromImage(visuals.leftHand));
     if (visuals.rightHand) visionParts.push(getPartFromImage(visuals.rightHand));
     
     geminiHistory.unshift(
       { role: 'user', parts: visionParts },
-      { role: 'model', parts: [{ text: "I have received and integrated your visual artifacts. I am ready to provide your synthesis based on these physical signs and your astrological data." }] }
+      { role: 'model', parts: [{ text: "I have observed your physical manifestations. My vision is now aligned with your path." }] }
     );
   }
 
@@ -139,7 +139,7 @@ export async function initializeChatSession(
     history: geminiHistory,
     config: {
       systemInstruction,
-      temperature: 0.85,
+      temperature: 0.8,
       tools: enableGoogleSearch ? [{ googleSearch: {} }] : undefined
     },
   });

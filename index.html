@@ -13,6 +13,7 @@
             background-attachment: fixed;
             margin: 0;
             padding: 0;
+            overflow-x: hidden;
         }
         .font-serif {
             font-family: 'Playfair Display', serif;
@@ -24,9 +25,20 @@
             border: 1px solid rgba(255, 255, 255, 0.08);
         }
         .glass-dark {
-            background: rgba(0, 0, 0, 0.3);
+            background: rgba(0, 0, 0, 0.4);
             backdrop-filter: blur(12px);
             border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+        .glow-border {
+            position: relative;
+        }
+        .glow-border::after {
+            content: '';
+            position: absolute;
+            inset: -1px;
+            background: linear-gradient(45deg, transparent, rgba(99, 102, 241, 0.3), transparent);
+            z-index: -1;
+            border-radius: inherit;
         }
         .custom-scrollbar::-webkit-scrollbar {
             width: 4px;
@@ -38,12 +50,16 @@
             background: rgba(255, 255, 255, 0.2);
             border-radius: 10px;
         }
-        @keyframes orbit {
-            from { transform: rotate(0deg) translateX(10px) rotate(0deg); }
-            to { transform: rotate(360deg) translateX(10px) rotate(-360deg); }
+        @keyframes twinkle {
+            0%, 100% { opacity: 0.3; transform: scale(1); }
+            50% { opacity: 1; transform: scale(1.2); }
         }
-        .orbit-icon {
-            animation: orbit 4s linear infinite;
+        .star {
+            position: absolute;
+            background: white;
+            border-radius: 50%;
+            pointer-events: none;
+            animation: twinkle var(--duration) ease-in-out infinite;
         }
     </style>
     
@@ -54,11 +70,9 @@
     "react": "https://esm.sh/react@19.0.0",
     "react-dom": "https://esm.sh/react-dom@19.0.0",
     "react-dom/client": "https://esm.sh/react-dom@19.0.0/client",
-    "firebase/app": "https://esm.sh/firebase@12.7.0/app",
-    "firebase/database": "https://esm.sh/firebase@12.7.0/database",
-    "firebase/": "https://esm.sh/firebase@^12.7.0/",
     "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
-    "react/": "https://esm.sh/react@^19.2.3/"
+    "react/": "https://esm.sh/react@^19.2.3/",
+    "firebase/": "https://esm.sh/firebase@^12.7.0/"
   }
 }
 </script>
@@ -70,7 +84,24 @@
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 </head>
 <body class="text-gray-100 min-h-screen selection:bg-indigo-500/30">
-    <div id="root"></div>
+    <div id="stars-container" class="fixed inset-0 z-0 opacity-40 overflow-hidden pointer-events-none"></div>
+    <div id="root" class="relative z-10"></div>
+    
+    <script>
+        const container = document.getElementById('stars-container');
+        for (let i = 0; i < 150; i++) {
+            const star = document.createElement('div');
+            star.className = 'star';
+            const size = Math.random() * 2 + 1;
+            star.style.width = `${size}px`;
+            star.style.height = `${size}px`;
+            star.style.left = `${Math.random() * 100}%`;
+            star.style.top = `${Math.random() * 100}%`;
+            star.style.setProperty('--duration', `${Math.random() * 3 + 2}s`);
+            container.appendChild(star);
+        }
+    </script>
+
     <script 
         type="text/babel" 
         data-type="module" 

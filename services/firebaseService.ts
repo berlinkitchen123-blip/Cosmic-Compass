@@ -1,7 +1,7 @@
 
 // services/firebaseService.ts
-import { initializeApp, getApp, getApps } from 'firebase/app';
-import type { FirebaseApp } from 'firebase/app';
+// Fix: Use named imports for firebase/app to resolve missing member export errors
+import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getDatabase, ref, set, get } from 'firebase/database';
 import type { Database } from 'firebase/database';
 
@@ -16,8 +16,8 @@ const firebaseConfig = {
 };
 
 // Singleton pattern for Firebase App
-// Fix: Use type-only import for FirebaseApp interface
-let app: FirebaseApp;
+// Fix: Use direct named function calls instead of namespace reference
+let app: any;
 if (getApps().length === 0) {
   app = initializeApp(firebaseConfig);
 } else {
@@ -25,7 +25,7 @@ if (getApps().length === 0) {
 }
 
 // Singleton pattern for Database
-// Fix: Use type-only import for Database interface
+// Fix: Explicitly export the database instance using the correctly initialized app
 export const db: Database = getDatabase(app, firebaseConfig.databaseURL);
 
 /**
