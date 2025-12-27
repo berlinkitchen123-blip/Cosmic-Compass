@@ -7,16 +7,16 @@ import {
   User, Milestone, Sparkles, Globe, 
   MessageSquare, History, Zap, Compass, RefreshCw,
   Sun, Moon, Star, Send, Trash2, ArrowLeft,
-  Camera, Eye, Layout, Info, MapPin, Clock, Share2, BookOpen
+  Camera, Eye, Layout, Info, MapPin, Clock, Share2, BookOpen, Settings, X, Key, Search
 } from 'lucide-react';
 
 // --- Configuration & Constants ---
-// HARDCODED API KEY TO FIX DEPLOYMENT "PROCESS NOT DEFINED" ERROR
-const GENAI_API_KEY = "AIzaSyDrFjYv2c322zzCMsgpVttjUz9lWDrBoUg";
+// Default Fallback Key (May be restricted on deployment)
+const DEFAULT_API_KEY = "AIzaSyDrFjYv2c322zzCMsgpVttjUz9lWDrBoUg";
 const LATEST_PRO_MODEL = 'gemini-3-pro-preview';
 
 const FIREBASE_CONFIG = {
-  apiKey: GENAI_API_KEY,
+  apiKey: DEFAULT_API_KEY,
   authDomain: "cosmic-compass-5fd5e.firebaseapp.com",
   databaseURL: "https://cosmic-compass-5fd5e-default-rtdb.europe-west1.firebasedatabase.app",
   projectId: "cosmic-compass-5fd5e",
@@ -99,6 +99,11 @@ const App: React.FC = () => {
     return saved ? JSON.parse(saved) : DEFAULT_STATE;
   });
 
+  // Settings State
+  const [showSettings, setShowSettings] = useState(false);
+  const [customApiKey, setCustomApiKey] = useState(() => localStorage.getItem('cosmic_custom_api_key') || '');
+  const [enableSearch, setEnableSearch] = useState(() => localStorage.getItem('cosmic_enable_search') !== 'false');
+
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [oracleReading, setOracleReading] = useState('');
@@ -134,6 +139,17 @@ const App: React.FC = () => {
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [state.history]);
+
+  const saveSettings = () => {
+    localStorage.setItem('cosmic_custom_api_key', customApiKey);
+    localStorage.setItem('cosmic_enable_search', String(enableSearch));
+    setShowSettings(false);
+    // Reset chat session to use new key/config
+    chatSessionRef.current = null;
+    alert("Configuration Saved. The Oracle will now use your updated settings.");
+  };
+
+  const getEffectiveApiKey = () => customApiKey.trim() || DEFAULT_API_KEY;
 
   // AI Prompt Logic - The Core "Combined Science" Engine
   const getPrompt = (isChat: boolean) => {
@@ -176,21 +192,32 @@ const App: React.FC = () => {
     setLoading(true);
     setOracleReading('');
     try {
-      // FIX: Use local GENAI_API_KEY instead of process.env
-      const ai = new GoogleGenAI({ apiKey: GENAI_API_KEY });
+      const apiKey = getEffectiveApiKey();
+      const ai = new GoogleGenAI({ apiKey });
       const parts: any[] = [{ text: getPrompt(false) }];
       
       if (state.visuals.face) parts.push({ inlineData: { data: state.visuals.face.split(',')[1], mimeType: 'image/jpeg' } });
       if (state.visuals.palm) parts.push({ inlineData: { data: state.visuals.palm.split(',')[1], mimeType: 'image/jpeg' } });
 
+      const config: any = {};
+      if (enableSearch) {
+        config.tools = [{ googleSearch: {} }];
+      }
+
       const res = await ai.models.generateContent({
         model: LATEST_PRO_MODEL,
         contents: { parts },
-        config: { tools: [{ googleSearch: {} }] }
+        config
       });
       setOracleReading(res.text || 'The cosmos is silent. Verify the connection.');
     } catch (e: any) {
-      alert("Consultation Failed: " + e.message);
+      console.error(e);
+      if (e.toString().includes('403') || e.message?.includes('403')) {
+        alert("Access Forbidden (403).\n\nYour API Key does not have permission for this model or Google Search Grounding.\n\n1. Open Settings (top right).\n2. Try disabling 'Google Search Grounding'.\n3. Or provide a valid Gemini API Key from a project with billing enabled.");
+        setShowSettings(true);
+      } else {
+        alert("Consultation Failed: " + e.message);
+      }
     } finally { setLoading(false); }
   };
 
@@ -201,18 +228,30 @@ const App: React.FC = () => {
     setState(p => ({ ...p, history: newHistory }));
     
     try {
-      // FIX: Use local GENAI_API_KEY instead of process.env
-      const ai = new GoogleGenAI({ apiKey: GENAI_API_KEY });
+      const apiKey = getEffectiveApiKey();
+      const ai = new GoogleGenAI({ apiKey });
+      
       if (!chatSessionRef.current) {
+        const config: any = { systemInstruction: getPrompt(true) };
+        if (enableSearch) {
+            config.tools = [{ googleSearch: {} }];
+        }
+
         chatSessionRef.current = ai.chats.create({
           model: LATEST_PRO_MODEL,
-          config: { systemInstruction: getPrompt(true) }
+          config
         });
       }
       const res = await chatSessionRef.current.sendMessage({ message: text });
       setState(p => ({ ...p, history: [...newHistory, { role: 'model', text: res.text || '' }] }));
     } catch (e: any) {
-      alert("Oracle Error: " + e.message);
+      console.error(e);
+      if (e.toString().includes('403') || e.message?.includes('403')) {
+        alert("Access Forbidden (403). Please check Settings > API Key.");
+        setShowSettings(true);
+      } else {
+        alert("Oracle Error: " + e.message);
+      }
     } finally { setLoading(false); }
   };
 
@@ -227,17 +266,62 @@ const App: React.FC = () => {
 
   return (
     <div className="max-w-7xl mx-auto py-12 px-6 pb-24 relative z-10">
-      <header className="text-center mb-12">
+      
+      {/* Settings Modal */}
+      {showSettings && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="glass bg-[#0f172a] rounded-3xl p-8 max-w-md w-full border border-white/20 shadow-2xl relative">
+             <button onClick={() => setShowSettings(false)} className="absolute right-4 top-4 text-gray-400 hover:text-white"><X size={24}/></button>
+             <h3 className="text-xl font-serif text-white mb-6 flex items-center gap-2"><Settings size={20} className="text-indigo-400"/> Oracle Configuration</h3>
+             
+             <div className="space-y-6">
+                <div>
+                   <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 block flex items-center gap-2"><Key size={12}/> Gemini API Key</label>
+                   <input 
+                      type="password" 
+                      placeholder="AIzaSy..." 
+                      value={customApiKey} 
+                      onChange={e => setCustomApiKey(e.target.value)} 
+                      className="w-full bg-black/40 border border-white/10 rounded-xl py-3 px-4 text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+                   />
+                   <p className="text-[10px] text-gray-500 mt-2">Leave empty to use the shared default key (may be rate-limited).</p>
+                </div>
+
+                <div className="flex items-center justify-between p-4 bg-white/5 rounded-xl border border-white/5">
+                    <div>
+                       <label className="text-[12px] font-bold text-gray-200 block flex items-center gap-2"><Search size={12}/> Google Search Grounding</label>
+                       <p className="text-[10px] text-gray-500 mt-1">Enhances answers with real-time web data.</p>
+                    </div>
+                    <button 
+                        onClick={() => setEnableSearch(!enableSearch)} 
+                        className={`w-10 h-6 rounded-full relative transition-all ${enableSearch ? 'bg-indigo-600' : 'bg-gray-600'}`}
+                    >
+                        <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${enableSearch ? 'left-5' : 'left-1'}`}></div>
+                    </button>
+                </div>
+
+                <button onClick={saveSettings} className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 rounded-xl text-white font-bold text-sm shadow-lg transition-all">
+                  Save Configuration
+                </button>
+             </div>
+          </div>
+        </div>
+      )}
+
+      <header className="text-center mb-12 relative">
         <h1 className="font-serif text-6xl text-white font-black mb-4 tracking-tighter bg-clip-text text-transparent bg-gradient-to-b from-white via-indigo-100 to-indigo-500">Akashic Oracle</h1>
         <div className="flex justify-center items-center space-x-3">
           <div className={`px-4 py-1.5 rounded-full border text-[10px] font-black uppercase tracking-[0.2em] transition-all ${syncing ? 'bg-amber-500/10 border-amber-500/30 text-amber-400' : 'bg-indigo-500/10 border-indigo-500/30 text-indigo-400'}`}>
-            {syncing ? 'Syncing Akashic Cloud...' : 'Soul Record Synced (v12.7.0)'}
+            {syncing ? 'Syncing Akashic Cloud...' : 'Soul Record Synced (v17.2)'}
           </div>
           <select value={state.language} onChange={e => setState(p => ({...p, language: e.target.value}))} className="bg-white/5 border border-white/10 rounded-full px-4 py-1.5 text-[10px] font-bold text-indigo-300 uppercase outline-none cursor-pointer">
             <option value="English">English</option>
             <option value="Gujarati">Gujarati</option>
             <option value="Hindi">Hindi</option>
           </select>
+          <button onClick={() => setShowSettings(true)} className="w-8 h-8 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-gray-400 hover:text-white hover:bg-indigo-500/20 transition-all">
+             <Settings size={14} />
+          </button>
         </div>
       </header>
 
