@@ -2,6 +2,9 @@
 import { GoogleGenAI, Chat, GenerateContentResponse } from "@google/genai";
 import { BirthDetails, ReadingOptions, AdvancedReadingOptions, LifeEvent, SpouseDetails, ApiResponse, Visuals, ChatMessage } from "../types";
 
+/**
+ * Builds a highly specific prompt for Navagraha (9 Planets) and 9-5-1 Willpower Axis analysis.
+ */
 function buildAstrologyPrompt(
   birthDetails: BirthDetails,
   options: ReadingOptions,
@@ -51,6 +54,9 @@ Format: Markdown. Tone: Visionary.`;
   return prompt;
 }
 
+/**
+ * Prepares image data for the Gemini API.
+ */
 function getPartFromImage(dataUri: string) {
   const [header, data] = dataUri.split(',');
   const mimeType = header.match(/:(.*?);/)?.[1] || 'image/jpeg';
@@ -62,7 +68,8 @@ function getPartFromImage(dataUri: string) {
   };
 }
 
-const LATEST_FLASH_MODEL = 'gemini-3-flash-preview';
+// Upgrade to gemini-3-pro-preview for complex reasoning tasks like Navagraha synthesis
+const LATEST_PRO_MODEL = 'gemini-3-pro-preview';
 
 export async function getCombinedReading(
   birthDetails: BirthDetails,
@@ -84,7 +91,7 @@ export async function getCombinedReading(
 
   try {
     const response = await ai.models.generateContent({
-      model: LATEST_FLASH_MODEL,
+      model: LATEST_PRO_MODEL,
       contents: { parts },
       config: { 
         temperature: 0.7, 
@@ -121,7 +128,7 @@ export async function initializeChatSession(
   }));
 
   return ai.chats.create({
-    model: LATEST_FLASH_MODEL,
+    model: LATEST_PRO_MODEL,
     history: geminiHistory,
     config: {
       systemInstruction,
@@ -131,6 +138,9 @@ export async function initializeChatSession(
   });
 }
 
+/**
+ * Streams chat responses from the Oracle.
+ */
 export async function* sendChatMessage(chatSession: Chat, message: string): AsyncGenerator<string, void, unknown> {
   const responseStream = await chatSession.sendMessageStream({ message });
   for await (const chunk of responseStream) {

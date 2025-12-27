@@ -9,7 +9,7 @@ import { saveStateToLocalStorage, loadStateFromLocalStorage } from './utils/stor
 import { getOrGenerateUserId, syncToFirebase, loadFromFirebase } from './services/firebaseService';
 import { Chat } from '@google/genai';
 
-const MASTER_STORAGE_KEY = 'cosmic_compass_master_v2';
+const MASTER_STORAGE_KEY = 'cosmic_compass_master_v3';
 
 interface AppState {
   birthDetails: BirthDetails;
@@ -68,6 +68,7 @@ const App: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [activeUploadSlot, setActiveUploadSlot] = useState<keyof Visuals | null>(null);
 
+  // Recovery effect from cloud
   useEffect(() => {
     const recoverData = async () => {
       try {
@@ -100,10 +101,11 @@ const App: React.FC = () => {
     return success;
   }, [userId, cloudLockReleased]);
 
+  // Regular auto-sync debounce (2s)
   useEffect(() => {
     saveStateToLocalStorage(MASTER_STORAGE_KEY, appState);
     if (cloudLockReleased) {
-        const timer = setTimeout(() => triggerSync(appState), 10000);
+        const timer = setTimeout(() => triggerSync(appState), 2000);
         return () => clearTimeout(timer);
     }
   }, [appState, triggerSync, cloudLockReleased]);
@@ -124,7 +126,10 @@ const App: React.FC = () => {
     
     const newUserMsg: ChatMessage = { role: 'user', text: message };
     setChatLoading(true);
-    setAppState(prev => ({ ...prev, chatHistory: [...prev.chatHistory, newUserMsg, { role: 'model', text: '' }] }));
+    
+    // Update local state first
+    const updatedHistory = [...chatHistory, newUserMsg, { role: 'model', text: '' }];
+    setAppState(prev => ({ ...prev, chatHistory: updatedHistory }));
     
     let fullText = '';
     try {
@@ -137,6 +142,12 @@ const App: React.FC = () => {
           return { ...prev, chatHistory: hist };
         });
       }
+      
+      // Force sync after message completes
+      const finalChatHistory = [...chatHistory, newUserMsg, { role: 'model', text: fullText }];
+      const finalChatState = { ...appState, chatHistory: finalChatHistory };
+      triggerSync(finalChatState);
+
     } catch (err: any) { 
       setChatError(err.message); 
     } finally { 
@@ -180,30 +191,13 @@ const App: React.FC = () => {
     }
   };
 
-  const handleUploadClick = (slot: keyof Visuals) => {
-    setActiveUploadSlot(slot);
-    fileInputRef.current?.click();
-  };
-
   return (
     <div className="max-w-7xl mx-auto py-12 px-6 pb-24 relative">
-      <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={(e) => {
-        const file = e.target.files?.[0];
-        if (file && activeUploadSlot) {
-            const reader = new FileReader();
-            reader.onloadend = () => {
-                const newVisuals = { ...visuals, [activeUploadSlot]: reader.result as string };
-                updateAppState({ visuals: newVisuals });
-            };
-            reader.readAsDataURL(file);
-        }
-      }} />
-
       {isRecovering && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 backdrop-blur-2xl">
            <div className="text-center">
               <div className="w-16 h-16 border-t-4 border-indigo-500 rounded-full animate-spin mx-auto mb-6"></div>
-              <p className="text-indigo-400 font-bold uppercase tracking-[0.4em] text-xs">Aligning the Stars...</p>
+              <p className="text-indigo-400 font-bold uppercase tracking-[0.4em] text-xs">Accessing Akashic Cloud...</p>
            </div>
         </div>
       )}
@@ -217,24 +211,36 @@ const App: React.FC = () => {
           <div className={`flex items-center space-x-2 px-4 py-1.5 rounded-full border transition-all ${isFirebaseSynced ? 'bg-indigo-500/10 border-indigo-500/30' : 'bg-amber-500/10 border-amber-500/30'}`}>
             <div className={`w-2 h-2 rounded-full ${isFirebaseSynced ? 'bg-indigo-500' : 'bg-amber-500 animate-pulse'}`}></div>
             <span className="text-[10px] uppercase tracking-widest text-gray-300 font-black">
-              {isSyncing ? 'Synchronizing Soul Data...' : isFirebaseSynced ? 'Akashic Sync Active' : 'Offline Orbit'}
+              {isSyncing ? 'Syncing...' : isFirebaseSynced ? 'Cloud Synced' : 'Sync Pending'}
             </span>
           </div>
-          <select value={outputLanguage} onChange={e => updateAppState({ outputLanguage: e.target.value })} className="bg-white/5 border border-white/10 rounded-full px-4 py-1.5 text-[10px] font-bold text-indigo-300 uppercase tracking-widest focus:ring-0 outline-none">
+          <select value={outputLanguage} onChange={e => updateAppState({ outputLanguage: e.target.value })} className="bg-white/5 border border-white/10 rounded-full px-4 py-1.5 text-[10px] font-bold text-indigo-300 uppercase tracking-widest outline-none">
             <option value="English">English</option>
             <option value="Gujarati">Gujarati</option>
           </select>
         </div>
       </header>
 
+      {/* Main Navigation Tabs */}
+      <div className="flex justify-center mb-12">
+        <div className="glass p-1.5 rounded-2xl flex space-x-2 shadow-2xl border border-white/10">
+          <button onClick={() => setIsChatMode(false)} className={`px-10 py-3 rounded-xl font-bold transition-all ${!isChatMode ? 'bg-indigo-600 text-white shadow-indigo-500/20 shadow-lg' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}>Profile Mandali</button>
+          <button 
+            onClick={() => setIsChatMode(true)} 
+            className={`px-10 py-3 rounded-xl font-bold transition-all relative ${isChatMode ? 'bg-purple-600 text-white shadow-purple-500/20 shadow-lg' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}
+          >
+            Universal Oracle Chat {chatHistory.length > 0 && <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full text-[9px] flex items-center justify-center border-2 border-[#020617] font-black">{chatHistory.length}</span>}
+          </button>
+        </div>
+      </div>
+
       {!isChatMode ? (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-          {/* Left Column: Birth Data & Willpower Axis */}
           <div className="lg:col-span-4 space-y-6">
             <section className="glass rounded-[2rem] p-8 glow-border shadow-2xl">
               <h2 className="font-serif text-2xl text-white mb-8 flex items-center space-x-3">
                 <span className="text-indigo-400">✧</span>
-                <span>Birth Mandali</span>
+                <span>Birth Data</span>
               </h2>
               <div className="space-y-5">
                 <InputField label="Name" id="name" type="text" value={birthDetails.name} onChange={e => updateAppState({ birthDetails: { ...birthDetails, name: e.target.value } })} />
@@ -249,9 +255,9 @@ const App: React.FC = () => {
             <section className="glass rounded-[2rem] p-8 glow-border">
               <h2 className="font-serif text-2xl text-white mb-6 flex items-center space-x-3">
                 <span className="text-amber-400">⧉</span>
-                <span>9-5-1 Willpower Axis</span>
+                <span>9-5-1 Axis Analysis</span>
               </h2>
-              <div className="grid grid-cols-3 gap-2 aspect-square max-w-[200px] mx-auto mb-6 p-2 bg-black/40 rounded-2xl border border-white/10">
+              <div className="grid grid-cols-3 gap-2 aspect-square max-w-[180px] mx-auto mb-6 p-2 bg-black/40 rounded-2xl border border-white/10">
                 {[4, 9, 2, 3, 5, 7, 8, 1, 6].map((num) => {
                   const isActive = [9, 5, 1].includes(num);
                   return (
@@ -261,135 +267,88 @@ const App: React.FC = () => {
                   );
                 })}
               </div>
-              <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest text-center">Vertical Willpower Line Analysis Active</p>
-            </section>
-            
-            <section className="glass rounded-[2rem] p-8 glow-border">
-              <h2 className="font-serif text-2xl text-white mb-6 flex items-center space-x-3">
-                <span className="text-purple-400">❂</span>
-                <span>Configuration</span>
-              </h2>
-              <div className="space-y-4">
-                <CheckboxField label="Enable Akashic Search" id="search" checked={enableGoogleSearch} onChange={e => updateAppState({ enableGoogleSearch: e.target.checked })} />
-                <div className="p-4 bg-indigo-500/5 border border-indigo-500/20 rounded-2xl">
-                    <p className="text-[10px] text-indigo-300 font-bold uppercase tracking-widest leading-relaxed">Synthesis mode: 9 Planets (Navagraha) + 9-5-1 Axis Analysis.</p>
-                </div>
-              </div>
+              <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest text-center">Willpower Line Visualization</p>
             </section>
           </div>
 
-          {/* Middle Column: The 9 Navagraha Nodes */}
           <div className="lg:col-span-4 space-y-6">
-            <section className="glass rounded-[2rem] p-8 glow-border overflow-hidden flex flex-col min-h-[700px]">
+            <section className="glass rounded-[2rem] p-8 glow-border flex flex-col min-h-[600px]">
               <div className="flex justify-between items-center mb-6">
                 <h2 className="font-serif text-2xl text-white flex items-center space-x-3">
                   <span className="text-amber-400">⏳</span>
-                  <span>Navagraha Timeline</span>
+                  <span>Navagraha Nodes</span>
                 </h2>
-                <button 
-                  onClick={handleAddEvent}
-                  className="w-10 h-10 rounded-full bg-indigo-600 text-white flex items-center justify-center hover:bg-indigo-500 transition-all shadow-xl"
-                >
-                  <span className="text-xl">+</span>
-                </button>
+                <button onClick={handleAddEvent} className="w-10 h-10 rounded-full bg-indigo-600 text-white flex items-center justify-center hover:bg-indigo-500 transition-all shadow-xl">+</button>
               </div>
-              <p className="text-[10px] text-gray-500 font-black uppercase tracking-widest mb-4">Each node maps to one of the 9 Grahas</p>
-              
               <div className="space-y-4 overflow-y-auto custom-scrollbar pr-2 flex-1">
                 {lifeEvents.map((event, i) => (
-                  <div key={i} className="glass-dark p-5 rounded-2xl border border-white/5 flex flex-col relative group transition-all hover:border-indigo-500/30">
-                    <div className="absolute top-0 left-0 w-1.5 h-full bg-indigo-600/50 group-hover:bg-indigo-400"></div>
-                    <div className="flex justify-between items-center mb-3">
-                      <select 
-                        value={event.planet || ''} 
-                        onChange={(e) => handleUpdateEvent(i, 'planet', e.target.value)}
-                        className="bg-indigo-900/40 text-indigo-300 text-[10px] font-black uppercase px-3 py-1 rounded-full outline-none border border-indigo-500/20"
-                      >
-                        <option value="">Select Graha</option>
+                  <div key={i} className="glass-dark p-4 rounded-2xl border border-white/5 flex flex-col relative group">
+                    <div className="absolute top-0 left-0 w-1 h-full bg-indigo-600/50"></div>
+                    <div className="flex justify-between items-center mb-2">
+                      <select value={event.planet || ''} onChange={(e) => handleUpdateEvent(i, 'planet', e.target.value)} className="bg-indigo-900/40 text-indigo-300 text-[9px] font-black uppercase px-2 py-1 rounded-full outline-none">
+                        <option value="">Select Planet</option>
                         {PLANETS.map(p => <option key={p} value={p}>{p}</option>)}
                       </select>
-                      <button onClick={() => handleRemoveEvent(i)} className="text-gray-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all">
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                      </button>
+                      <button onClick={() => handleRemoveEvent(i)} className="text-gray-600 hover:text-red-400 transition-all opacity-0 group-hover:opacity-100">×</button>
                     </div>
-                    <div className="flex space-x-3 items-center mb-2">
-                        <input 
-                            type="date" 
-                            value={event.date}
-                            onChange={(e) => handleUpdateEvent(i, 'date', e.target.value)}
-                            className="bg-transparent text-gray-400 text-[10px] font-bold focus:outline-none"
-                        />
-                    </div>
-                    <textarea 
-                      value={event.description}
-                      onChange={(e) => handleUpdateEvent(i, 'description', e.target.value)}
-                      placeholder="Event description..."
-                      className="bg-transparent text-gray-200 text-xs leading-relaxed w-full resize-none focus:outline-none placeholder-gray-600"
-                      rows={2}
-                    />
+                    <textarea value={event.description} onChange={(e) => handleUpdateEvent(i, 'description', e.target.value)} className="bg-transparent text-gray-200 text-xs w-full resize-none outline-none" rows={2} placeholder="Karmic event..." />
                   </div>
                 ))}
               </div>
             </section>
           </div>
 
-          {/* Right Column: Output & Action */}
-          <div className="lg:col-span-4 space-y-6 flex flex-col">
+          <div className="lg:col-span-4 space-y-6">
             <button 
                 onClick={handleGenerateReading} 
                 disabled={loading} 
-                className="w-full relative py-10 rounded-[2.5rem] bg-indigo-600 hover:bg-indigo-500 text-white font-bold shadow-2xl transition-all active:scale-95 overflow-hidden border border-white/20 group"
+                className="w-full relative py-12 rounded-[2.5rem] bg-indigo-600 hover:bg-indigo-500 text-white font-bold shadow-2xl transition-all border border-white/20"
             >
-              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000"></div>
-              {loading ? (
-                <div className="flex flex-col items-center">
-                    <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-white mb-3"></div>
-                    <span className="text-[10px] uppercase tracking-widest">Invoking Navagraha Synthesis...</span>
-                </div>
-              ) : (
-                <div className="flex flex-col items-center">
-                    <span className="text-xl uppercase tracking-widest mb-1">Synthesize Path</span>
-                    <span className="text-[9px] text-indigo-200 font-bold tracking-[0.2em] uppercase opacity-60">Full 9-Planet & Willpower Analysis</span>
-                </div>
-              )}
+              {loading ? "Aligning Navagraha..." : "Generate Cosmic Synthesis"}
             </button>
-
-            {reading ? (
-              <div className="glass rounded-[2rem] p-10 border border-white/10 flex-1 overflow-y-auto max-h-[750px] custom-scrollbar shadow-2xl animate-in fade-in slide-in-from-bottom-4 duration-500">
-                <div className="prose prose-invert max-w-none">
-                    <div className="text-gray-200 text-sm leading-relaxed space-y-6 whitespace-pre-wrap font-medium">
-                        {reading}
-                    </div>
-                </div>
+            {reading && (
+              <div className="glass rounded-[2rem] p-8 border border-white/10 overflow-y-auto max-h-[600px] custom-scrollbar">
+                <div className="text-gray-200 text-sm leading-relaxed whitespace-pre-wrap mb-6">{reading}</div>
                 {groundingSources.length > 0 && (
-                  <div className="mt-12 pt-8 border-t border-white/5">
-                    <p className="text-[10px] font-black uppercase tracking-widest text-indigo-400 mb-4">Astral Anchors</p>
-                    <div className="flex flex-wrap gap-2">
-                      {groundingSources.map((chunk, idx) => {
-                        const s = chunk.web || chunk.maps;
-                        if (!s) return null;
-                        return (
-                          <a key={idx} href={s.uri} target="_blank" rel="noopener noreferrer" className="px-3 py-1.5 bg-white/5 border border-white/10 rounded-lg text-[9px] text-indigo-300 font-bold hover:bg-white/10 transition-all">
-                            {s.title || 'Source'}
-                          </a>
-                        );
-                      })}
-                    </div>
+                  <div className="mt-8 pt-6 border-t border-white/10">
+                    <p className="text-[10px] uppercase tracking-widest text-indigo-400 font-black mb-4">Grounding Sources</p>
+                    <ul className="space-y-4">
+                      {groundingSources.map((source, idx) => (
+                        <li key={idx} className="flex items-start flex-col">
+                          {source.web && (
+                            <div className="flex items-start mb-1">
+                              <span className="text-indigo-500 mr-2">🔗</span>
+                              <a href={source.web.uri} target="_blank" rel="noopener noreferrer" className="text-xs text-indigo-300 hover:text-indigo-200 transition-all underline decoration-indigo-500/30">
+                                {source.web.title || source.web.uri}
+                              </a>
+                            </div>
+                          )}
+                          {source.maps && (
+                            <div className="flex items-start flex-col mb-1">
+                              <div className="flex items-start mb-1">
+                                <span className="text-amber-500 mr-2">📍</span>
+                                <a href={source.maps.uri} target="_blank" rel="noopener noreferrer" className="text-xs text-amber-300 hover:text-amber-200 transition-all underline decoration-amber-500/30">
+                                  {source.maps.title || "View Location on Google Maps"}
+                                </a>
+                              </div>
+                              {/* Extra display of review snippets as required by API guidelines */}
+                              {source.maps.placeAnswerSources?.reviewSnippets?.map((snippet: string, sIdx: number) => (
+                                <p key={sIdx} className="ml-6 text-[10px] text-gray-500 italic leading-snug">"{snippet}"</p>
+                              ))}
+                            </div>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
                   </div>
                 )}
               </div>
-            ) : !loading && (
-              <div className="flex-1 flex flex-col items-center justify-center p-12 opacity-20 text-center grayscale">
-                  <div className="text-6xl mb-6">⧉</div>
-                  <p className="font-serif text-xl italic leading-relaxed">The 9 planetary forces and the 9-5-1 axis await your command.</p>
-              </div>
             )}
-
             <button 
-              onClick={() => setIsChatMode(true)} 
-              className="w-full py-4 rounded-2xl bg-white/5 hover:bg-white/10 text-gray-400 font-bold text-xs uppercase tracking-widest border border-white/5 transition-all"
+                onClick={() => setIsChatMode(true)} 
+                className="w-full py-5 rounded-2xl bg-white/5 hover:bg-white/10 text-indigo-400 font-bold text-xs uppercase tracking-widest border border-indigo-500/20 transition-all shadow-xl"
             >
-              Open Universal Oracle
+              Consult Universal Oracle Chat
             </button>
           </div>
         </div>
@@ -400,30 +359,23 @@ const App: React.FC = () => {
           loading={chatLoading} 
           error={chatError} 
           onBackToForm={() => setIsChatMode(false)} 
-          onClearChat={() => { if(window.confirm("Purge Oracle history?")) { updateAppState({ chatHistory: [] }); setCurrentChatSession(undefined); }}} 
-          suggestedQuestions={[
-            "Analyze my 9-5-1 willpower potential vs world leaders?",
-            "Detailed dasha roadmap for 2030, 2040, and 2050?",
-            "How do my 9 planets impact my life in Germany?",
-            "Spiritual meaning of my 1995 Cancer Moon and 9-5-1 axis?"
-          ]}
+          onClearChat={() => { if(window.confirm("Clear Oracle data?")) { updateAppState({ chatHistory: [] }); setCurrentChatSession(undefined); }}} 
+          suggestedQuestions={["Explain my 9-5-1 potential?", "My career roadmap 2030-2050?", "How do the 9 planets affect me in Germany?"]}
           isSyncing={isSyncing}
+          isFirebaseSynced={isFirebaseSynced}
         />
       )}
 
-      <footer className="mt-24 pt-12 border-t border-white/5 text-center flex flex-col items-center pb-12">
-        <p className="text-[10px] text-indigo-400/60 font-black uppercase tracking-[0.4em] mb-4">Soul Resonance ID</p>
-        <div className="flex items-center space-x-3">
-            <code className="bg-black/60 px-8 py-3 rounded-2xl text-indigo-300 text-[11px] border border-white/10 font-mono select-all">{userId}</code>
-            <button 
-                onClick={() => { const id = prompt("Enter Soul ID:"); if(id) { localStorage.setItem('cosmic_user_id', id); window.location.reload(); }}} 
-                className="bg-indigo-600/10 hover:bg-indigo-600/20 px-6 py-3 rounded-2xl text-[10px] text-indigo-400 border border-indigo-500/20 uppercase font-black transition-all"
-            >
-                Connect Path
-            </button>
-        </div>
-        <p className="mt-8 text-[9px] text-gray-700 font-bold uppercase tracking-widest">A synthesis of Navagraha (9 Planets) and the 9-5-1 Willpower Axis</p>
-      </footer>
+      {/* Persistent Floating Chat FAB */}
+      {!isChatMode && (
+        <button 
+          onClick={() => setIsChatMode(true)}
+          className="fixed bottom-10 right-10 w-16 h-16 bg-gradient-to-tr from-indigo-600 to-purple-600 rounded-full flex items-center justify-center text-white shadow-2xl hover:scale-110 active:scale-95 transition-all z-50 group"
+        >
+          <div className="absolute -top-12 right-0 bg-indigo-900 text-white text-[10px] font-bold px-3 py-1 rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity">Ask the Oracle</div>
+          <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" /></svg>
+        </button>
+      )}
     </div>
   );
 };

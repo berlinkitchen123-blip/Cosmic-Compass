@@ -1,9 +1,7 @@
 
 // services/firebaseService.ts
-// Fix: Use a namespace import for 'firebase/app' to resolve errors where named members (initializeApp, getApps, getApp) are not recognized as exported
-import * as firebaseApp from 'firebase/app';
+import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getDatabase, ref, set, get } from 'firebase/database';
-import type { Database } from 'firebase/database';
 
 const firebaseConfig = {
   apiKey: "AIzaSyDrFjYv2c322zzCMsgpVttjUz9lWDrBoUg",
@@ -15,18 +13,16 @@ const firebaseConfig = {
   appId: "1:160679439170:web:bafbb80eb30f64ee9476db"
 };
 
-// Singleton pattern for Firebase App
-// Fix: Use the namespace reference (firebaseApp.getApps, firebaseApp.initializeApp, firebaseApp.getApp) to correctly initialize the application
-let app: any;
-if (firebaseApp.getApps().length === 0) {
-  app = firebaseApp.initializeApp(firebaseConfig);
-} else {
-  app = firebaseApp.getApp();
-}
+/**
+ * Robust singleton initialization for Firebase.
+ * Using getApps() to check for existing instances prevents "Firebase: App named '[DEFAULT]' already exists" errors.
+ */
+const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 
-// Singleton pattern for Database
-// Fix: Explicitly export the database instance using the correctly initialized app
-export const db: Database = getDatabase(app, firebaseConfig.databaseURL);
+/**
+ * Initialize Database
+ */
+export const db = getDatabase(app);
 
 /**
  * Gets or creates a persistent unique ID for this device/browser.
@@ -41,7 +37,7 @@ export const getOrGenerateUserId = (): string => {
 };
 
 /**
- * Saves the entire app state to Firebase.
+ * Saves the entire app state to Firebase Realtime Database.
  */
 export const syncToFirebase = async (userId: string, data: any) => {
   try {
@@ -58,7 +54,7 @@ export const syncToFirebase = async (userId: string, data: any) => {
 };
 
 /**
- * Fetches the app state from Firebase.
+ * Fetches the app state from Firebase Realtime Database.
  */
 export const loadFromFirebase = async (userId: string): Promise<any | null> => {
   try {
