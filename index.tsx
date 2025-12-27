@@ -37,7 +37,8 @@ interface AppState {
 
 // --- Constants ---
 
-const LATEST_PRO_MODEL = 'gemini-3-pro-preview';
+// Using Flash model for the "free API" request as it has a very generous free tier.
+const LATEST_FLASH_MODEL = 'gemini-3-flash-preview';
 const MASTER_STORAGE_KEY = 'cosmic_compass_master_v3_unified';
 const PLANETS = ['Sun', 'Moon', 'Mars', 'Mercury', 'Jupiter', 'Venus', 'Saturn', 'Rahu', 'Ketu'];
 
@@ -192,15 +193,19 @@ const App: React.FC = () => {
   const handleGenerateReading = async () => {
     setLoading(true);
     try {
+      // Using the environment API key as per instructions.
       const ai = new GoogleGenAI({apiKey: process.env.API_KEY});
       const prompt = buildAstrologyPrompt(appState.birthDetails, appState.lifeEvents, appState.outputLanguage);
       const res = await ai.models.generateContent({
-        model: LATEST_PRO_MODEL,
+        model: LATEST_FLASH_MODEL,
         contents: prompt,
         config: { tools: appState.enableGoogleSearch ? [{ googleSearch: {} }] : undefined },
       });
       setReading(res.text || '');
-    } catch (e: any) { alert(e.message); } finally { setLoading(false); }
+    } catch (e: any) { 
+        console.error(e);
+        alert("Error: " + e.message); 
+    } finally { setLoading(false); }
   };
 
   const handleSendMessage = async (text: string) => {
@@ -208,7 +213,7 @@ const App: React.FC = () => {
     const ai = new GoogleGenAI({apiKey: process.env.API_KEY});
     if (!chatSessionRef.current) {
       chatSessionRef.current = ai.chats.create({
-        model: LATEST_PRO_MODEL,
+        model: LATEST_FLASH_MODEL,
         config: { 
           systemInstruction: buildAstrologyPrompt(appState.birthDetails, appState.lifeEvents, appState.outputLanguage, true),
           tools: appState.enableGoogleSearch ? [{ googleSearch: {} }] : undefined
@@ -223,7 +228,10 @@ const App: React.FC = () => {
     try {
       const result = await chatSessionRef.current.sendMessage({ message: text });
       setAppState(prev => ({ ...prev, chatHistory: [...newHist, { role: 'model', text: result.text || '' }] }));
-    } catch (e: any) { alert(e.message); } finally { setLoading(false); }
+    } catch (e: any) { 
+        console.error(e);
+        alert("Chat Error: " + e.message); 
+    } finally { setLoading(false); }
   };
 
   return (
