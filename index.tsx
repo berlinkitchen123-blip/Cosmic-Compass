@@ -1,3 +1,4 @@
+
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import ReactDOM from 'react-dom/client';
 import { GoogleGenAI, Chat, GenerateContentResponse } from "@google/genai";
@@ -35,9 +36,23 @@ interface AppState {
   isChatMode: boolean;
 }
 
+// --- Global Interface Extension ---
+// Fix: Use the global AIStudio interface type and apply 'readonly' modifier to match environment requirements.
+declare global {
+  interface AIStudio {
+    hasSelectedApiKey: () => Promise<boolean>;
+    openSelectKey: () => Promise<void>;
+  }
+
+  interface Window {
+    readonly aistudio: AIStudio;
+  }
+}
+
 // --- Constants ---
 
 const LATEST_FLASH_MODEL = 'gemini-3-flash-preview';
+const LATEST_PRO_MODEL = 'gemini-3-pro-preview';
 const MASTER_STORAGE_KEY = 'cosmic_compass_v3_unified_safe';
 const PLANETS = ['Sun', 'Moon', 'Mars', 'Mercury', 'Jupiter', 'Venus', 'Saturn', 'Rahu', 'Ketu'];
 
@@ -110,13 +125,6 @@ Format: Markdown. Tone: Visionary. Focus on long-term projections.`;
   return prompt;
 }
 
-// --- Validation ---
-
-const isApiKeyValid = () => {
-  const key = process.env.API_KEY;
-  return key && key.length > 5 && key !== 'undefined' && key !== 'null';
-};
-
 // --- Components ---
 
 const InputField: React.FC<{ label: string; id: string; type: string; value: string; onChange: (e: any) => void }> = ({ label, id, type, value, onChange }) => (
@@ -165,8 +173,22 @@ const App: React.FC = () => {
   const [isFirebaseSynced, setIsFirebaseSynced] = useState(false);
   const [loading, setLoading] = useState(false);
   const [reading, setReading] = useState('');
+  const [hasApiKey, setHasApiKey] = useState(false);
   const chatSessionRef = useRef<Chat | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
+
+  // Initial Key Check
+  useEffect(() => {
+    const checkKey = async () => {
+      if (process.env.API_KEY && process.env.API_KEY.length > 5) {
+        setHasApiKey(true);
+      } else if (window.aistudio) {
+        const selected = await window.aistudio.hasSelectedApiKey();
+        setHasApiKey(selected);
+      }
+    };
+    checkKey();
+  }, []);
 
   // Sync with Cloud
   useEffect(() => {
@@ -198,32 +220,49 @@ const App: React.FC = () => {
 
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [appState.chatHistory]);
 
+  const ensureApiKey = async () => {
+    if (!process.env.API_KEY || process.env.API_KEY.length < 5) {
+      if (window.aistudio) {
+        await window.aistudio.openSelectKey();
+        setHasApiKey(true); // Assume success per instructions
+        return true;
+      }
+      return false;
+    }
+    return true;
+  };
+
   const handleGenerateReading = async () => {
-    if (!isApiKeyValid()) {
-      alert("Configuration Error: API Key is missing or invalid in your environment.");
+    const ready = await ensureApiKey();
+    if (!ready) {
+      alert("Please configure an API Key to proceed.");
       return;
     }
 
     setLoading(true);
     try {
-      // Strictly use process.env.API_KEY as per guidelines
       const ai = new GoogleGenAI({apiKey: process.env.API_KEY});
       const prompt = buildAstrologyPrompt(appState.birthDetails, appState.lifeEvents, appState.outputLanguage);
       const res = await ai.models.generateContent({
-        model: LATEST_FLASH_MODEL,
+        model: LATEST_PRO_MODEL,
         contents: prompt,
         config: { tools: appState.enableGoogleSearch ? [{ googleSearch: {} }] : undefined },
       });
       setReading(res.text || '');
     } catch (e: any) { 
         console.error(e);
-        alert("Cosmic Alignment Error: " + e.message); 
+        if (e.message?.includes("not found")) {
+          await window.aistudio.openSelectKey();
+        } else {
+          alert("Cosmic Alignment Error: " + e.message); 
+        }
     } finally { setLoading(false); }
   };
 
   const handleSendMessage = async (text: string) => {
     if (!text.trim()) return;
-    if (!isApiKeyValid()) return;
+    const ready = await ensureApiKey();
+    if (!ready) return;
 
     const ai = new GoogleGenAI({apiKey: process.env.API_KEY});
     if (!chatSessionRef.current) {
@@ -257,6 +296,11 @@ const App: React.FC = () => {
           <div className={`px-4 py-1.5 rounded-full border text-[10px] font-black uppercase tracking-widest transition-all ${isFirebaseSynced ? 'bg-indigo-500/10 border-indigo-500/30 text-indigo-300' : 'bg-amber-500/10 border-amber-500/30 text-amber-300'}`}>
             {isFirebaseSynced ? 'Cloud Synced' : 'Sync Pending'}
           </div>
+          {!hasApiKey && (
+            <button onClick={() => window.aistudio.openSelectKey()} className="px-4 py-1.5 rounded-full bg-red-500/20 border border-red-500/30 text-red-300 text-[10px] font-black uppercase tracking-widest animate-pulse">
+              Connect to Oracle
+            </button>
+          )}
           <select value={appState.outputLanguage} onChange={e => setAppState(p => ({...p, outputLanguage: e.target.value}))} className="bg-white/5 border border-white/10 rounded-full px-4 py-1.5 text-[10px] font-bold text-indigo-300 outline-none uppercase tracking-widest cursor-pointer hover:bg-white/10 transition-colors">
             <option value="English">English</option>
             <option value="Gujarati">Gujarati</option>
