@@ -30,11 +30,22 @@ const DEFAULT_STATE: AppState = {
   birthDetails: { name: 'Harshkumar Panubhai Patel', dob: '1995-01-17', tob: '15:58', pob: 'Vadodara, Gujarat, India', rashi: 'Cancer' },
   readingOptions: { astrology: true, numerology: true, rashifal: true, jyotish: true, dailyHoroscope: true, palmistry: true, lalKitab: true, vasthu: true, faceReading: true },
   advancedReadingOptions: { culturalContext: 'Vedic', includeScientificPerspective: true },
-  lifeEvents: PLANETS.map((p, i) => ({
-    planet: p,
-    date: new Date(1995 + i * 4, 0, 1).toISOString().split('T')[0],
-    description: `Karmic alignment for ${p}`
-  })),
+  lifeEvents: [
+    { date: '1995-01-17', description: 'Birth in Vadodara, Gujarat - Sun Node', planet: 'Sun' },
+    { date: '2012-05-15', description: 'Completed High School Education', planet: 'Mercury' },
+    { date: '2013-08-20', description: 'Started Engineering Bachelor degree', planet: 'Jupiter' },
+    { date: '2017-06-10', description: 'Graduation and Entry into Professional Career', planet: 'Sun' },
+    { date: '2019-03-12', description: 'Shift in career focus and location', planet: 'Mars' },
+    { date: '2021-02-14', description: 'Significant spiritual realization and lifestyle change', planet: 'Moon' },
+    { date: '2021-08-24', description: 'Health crisis: Platelets dropped to 10k (Karmic Node)', planet: 'Saturn' },
+    { date: '2021-12-10', description: 'Engagement ceremony with Pankti Patel', planet: 'Venus' },
+    { date: '2022-01-04', description: 'Married Pankti Patel (Astro Union)', planet: 'Venus' },
+    { date: '2023-05-15', description: 'Significant career advancement/promotion', planet: 'Mercury' },
+    { date: '2024-06-20', description: 'Preparation for International Migration', planet: 'Rahu' },
+    { date: '2024-11-06', description: 'Moved to Germany (Transcontinental Transit)', planet: 'Rahu' },
+    { date: '2025-01-01', description: 'Stable residency and new professional phase', planet: 'Saturn' },
+    { date: '2025-05-01', description: 'Future Growth: Family and Wealth Focus', planet: 'Jupiter' }
+  ],
   outputLanguage: 'Gujarati',
   exSpouseDetails: { name: 'Pankti Patel', dob: '1998-10-17' },
   enableGoogleSearch: true,
@@ -292,6 +303,7 @@ const App: React.FC = () => {
                       <button onClick={() => handleRemoveEvent(i)} className="text-gray-600 hover:text-red-400 transition-all opacity-0 group-hover:opacity-100">×</button>
                     </div>
                     <textarea value={event.description} onChange={(e) => handleUpdateEvent(i, 'description', e.target.value)} className="bg-transparent text-gray-200 text-xs w-full resize-none outline-none" rows={2} placeholder="Karmic event..." />
+                    <div className="text-[9px] text-indigo-400/60 font-black mt-1">{event.date}</div>
                   </div>
                 ))}
               </div>
@@ -331,7 +343,6 @@ const App: React.FC = () => {
                                   {source.maps.title || "View Location on Google Maps"}
                                 </a>
                               </div>
-                              {/* Extra display of review snippets as required by API guidelines */}
                               {source.maps.placeAnswerSources?.reviewSnippets?.map((snippet: string, sIdx: number) => (
                                 <p key={sIdx} className="ml-6 text-[10px] text-gray-500 italic leading-snug">"{snippet}"</p>
                               ))}
