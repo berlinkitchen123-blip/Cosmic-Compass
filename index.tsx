@@ -7,14 +7,16 @@ import {
   User, Milestone, Sparkles, Globe, 
   MessageSquare, History, Zap, Compass, RefreshCw,
   Sun, Moon, Star, Send, Trash2, ArrowLeft,
-  Camera, Eye, Layout, Info, MapPin, Clock, Share2
+  Camera, Eye, Layout, Info, MapPin, Clock, Share2, BookOpen
 } from 'lucide-react';
 
 // --- Configuration & Constants ---
-// Note: API_KEY is polyfilled in index.html to avoid "process is not defined" error in browser
+// HARDCODED API KEY TO FIX DEPLOYMENT "PROCESS NOT DEFINED" ERROR
+const GENAI_API_KEY = "AIzaSyDrFjYv2c322zzCMsgpVttjUz9lWDrBoUg";
 const LATEST_PRO_MODEL = 'gemini-3-pro-preview';
+
 const FIREBASE_CONFIG = {
-  apiKey: "AIzaSyDrFjYv2c322zzCMsgpVttjUz9lWDrBoUg",
+  apiKey: GENAI_API_KEY,
   authDomain: "cosmic-compass-5fd5e.firebaseapp.com",
   databaseURL: "https://cosmic-compass-5fd5e-default-rtdb.europe-west1.firebasedatabase.app",
   projectId: "cosmic-compass-5fd5e",
@@ -24,7 +26,7 @@ const FIREBASE_CONFIG = {
 };
 
 const PLANETS = ['Sun', 'Moon', 'Mars', 'Mercury', 'Jupiter', 'Venus', 'Saturn', 'Rahu', 'Ketu'];
-const MASTER_STORAGE_KEY = 'cosmic_compass_master_v16_final';
+const MASTER_STORAGE_KEY = 'cosmic_compass_master_v17_stable';
 
 // --- Types ---
 interface BirthDetails {
@@ -133,25 +135,49 @@ const App: React.FC = () => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [state.history]);
 
-  // AI Prompt Logic
+  // AI Prompt Logic - The Core "Combined Science" Engine
   const getPrompt = (isChat: boolean) => {
     const { profile, timeline, language, options } = state;
-    const activeArts = Object.keys(options).filter(k => (options as any)[k]).join(', ');
     
-    let p = isChat 
-      ? `You are the "Siddhanta Oracle", a supreme combined intelligence of Astrology, Numerology (Loshu & Vedic), Rashifal, Jyotish, and Samudrika Shastra (Face/Palm). Analyze the 9-5-1 willpower axis (Mars-Mercury-Sun) for leadership potential. Language: ${language}. Respond ONLY in ${language}.`
-      : `Provide a comprehensive synthesis of ${activeArts}. \n\nCRITICAL ANALYSIS:\n1. **9-5-1 Willpower Axis**: Analyze the presence/absence of 9 (Mars), 5 (Mercury), 1 (Sun) in the birth date grid. Discuss executive power and resilience.\n2. **Navagraha Synthesis**: Combine the planetary positions with the life timeline.\n3. **Visual Reading**: If face/palm provided, integrate physical features with destiny patterns.\n\nLanguage: ${language}. Respond ONLY in ${language}.`;
+    // Construct the request for combined sciences
+    let scienceDirectives = "";
+    if (options.astrology) scienceDirectives += "- **Western Astrology**: Analyze planetary transits and aspects.\n";
+    if (options.jyotish) scienceDirectives += "- **Vedic Jyotish**: Analyze the D1 Chart (Rashi), D9 (Navamsa), and Vimshottari Dasha.\n";
+    if (options.numerology) scienceDirectives += "- **Numerology**: Analyze the 9-5-1 Willpower Axis (Mars-Mercury-Sun) and the Life Path Number.\n";
+    if (options.rashifal) scienceDirectives += "- **Rashifal**: Provide the current moon sign forecast.\n";
+    if (options.palmistry || options.faceReading) scienceDirectives += "- **Samudrika Shastra**: Integrate any visual data (Face/Palm) into the reading.\n";
+
+    const baseSystem = `You are the "Siddhanta Oracle", a Grand Unified Intelligence of metaphysical sciences. You do not treat these as separate; you synthesize them into a single, cohesive narrative.
     
-    p += `\nSubject: ${profile.name}, born ${profile.dob} ${profile.tob} at ${profile.pob}.`;
-    p += `\nKarmic Timeline: ${timeline.map(n => `${n.date}: ${n.description} (${n.planet})`).join(', ')}.`;
-    return p;
+    KEY ANALYSIS FRAMEWORK:
+    ${scienceDirectives}
+    
+    SPECIFIC FOCUS:
+    - **9-5-1 Willpower Axis**: Check for the presence of 9 (Action/Mars), 5 (Intellect/Mercury), and 1 (Ego/Sun) in the birth date grid. Explain how this drives the subject's leadership.
+    - **Karmic Nodes**: Correlate the provided life timeline events with planetary movements (e.g., Saturn Return, Rahu Mahadasha).
+    
+    Response Rules:
+    - Language: ${language}.
+    - Tone: Mystical, Authoritative, yet scientifically structured.
+    - Format: Use Markdown with clear headings for "Planetary Alignment", "Numerological Grid", and "Future Projections (2025-2030)".
+    - **CRITICAL**: If the user asks about the future, project strictly based on planetary transits (Gochar).`;
+
+    let userContext = `\n\nSUBJECT DATA:\nName: ${profile.name}\nDOB: ${profile.dob}\nTOB: ${profile.tob}\nPOB: ${profile.pob}`;
+    userContext += `\n\nLIFE TIMELINE (Graha Nodes):\n${timeline.map(n => `- ${n.date}: ${n.description} [${n.planet}]`).join('\n')}`;
+
+    if (isChat) {
+      return baseSystem + userContext + "\n\nUser Question:";
+    } else {
+      return baseSystem + userContext + "\n\nTASK: Generate a Full Cosmic Synthesis Report combining all selected sciences.";
+    }
   };
 
   const handleGenerate = async () => {
     setLoading(true);
     setOracleReading('');
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      // FIX: Use local GENAI_API_KEY instead of process.env
+      const ai = new GoogleGenAI({ apiKey: GENAI_API_KEY });
       const parts: any[] = [{ text: getPrompt(false) }];
       
       if (state.visuals.face) parts.push({ inlineData: { data: state.visuals.face.split(',')[1], mimeType: 'image/jpeg' } });
@@ -164,7 +190,7 @@ const App: React.FC = () => {
       });
       setOracleReading(res.text || 'The cosmos is silent. Verify the connection.');
     } catch (e: any) {
-      alert("Consultation Failed: " + e.message + "\nEnsure your API Key is valid for Gemini.");
+      alert("Consultation Failed: " + e.message);
     } finally { setLoading(false); }
   };
 
@@ -175,7 +201,8 @@ const App: React.FC = () => {
     setState(p => ({ ...p, history: newHistory }));
     
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      // FIX: Use local GENAI_API_KEY instead of process.env
+      const ai = new GoogleGenAI({ apiKey: GENAI_API_KEY });
       if (!chatSessionRef.current) {
         chatSessionRef.current = ai.chats.create({
           model: LATEST_PRO_MODEL,
@@ -302,7 +329,7 @@ const App: React.FC = () => {
                </label>
             </div>
             <section className="glass rounded-3xl p-6 glow-border">
-              <h4 className="text-[10px] font-black uppercase text-indigo-400 mb-4 tracking-widest">Science Synthesis</h4>
+              <h4 className="text-[10px] font-black uppercase text-indigo-400 mb-4 tracking-widest flex items-center space-x-2"><BookOpen size={12}/><span>Combined Sciences</span></h4>
               <div className="grid grid-cols-2 gap-3">
                 {Object.keys(state.options).map(opt => (
                   <button key={opt} onClick={() => setState(p => ({...p, options: {...p.options, [opt]: !(p.options as any)[opt]}}))} className={`px-4 py-2 rounded-xl border text-[10px] font-black uppercase transition-all ${(state.options as any)[opt] ? 'bg-indigo-600/30 border-indigo-400 text-white' : 'bg-black/20 border-white/5 text-gray-600'}`}>
@@ -332,7 +359,7 @@ const App: React.FC = () => {
             {state.history.length === 0 && (
               <div className="h-full flex flex-col items-center justify-center opacity-30 text-center space-y-4">
                 <Sparkles size={48} className="text-indigo-400"/>
-                <p className="font-serif italic text-lg text-white">Inquire about the 9-5-1 axis or your destiny peaks...</p>
+                <p className="font-serif italic text-lg text-white">Inquire about the 9-5-1 axis, Jyotish charts, or your destiny peaks...</p>
               </div>
             )}
             {state.history.map((msg, i) => (
