@@ -50,8 +50,17 @@
             pointer-events: none;
             animation: twinkle var(--duration) ease-in-out infinite;
         }
+        .glow-border {
+            border: 1px solid rgba(99, 102, 241, 0.2);
+            box-shadow: 0 0 20px rgba(99, 102, 241, 0.05);
+        }
     </style>
     
+    <script>
+      // Essential shim to prevent "process is not defined" error
+      window.process = { env: { API_KEY: "" } };
+    </script>
+
     <script type="importmap">
 {
   "imports": {
@@ -85,7 +94,7 @@
               star.style.height = `${size}px`;
               star.style.left = `${Math.random() * 100}%`;
               star.style.top = `${Math.random() * 100}%`;
-              star.style.setProperty('--duration', `${Math.random() * 3 + 2}s`);
+              star.style.setProperty(--duration, `${Math.random() * 3 + 2}s`);
               container.appendChild(star);
           }
         }

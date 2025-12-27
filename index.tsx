@@ -37,9 +37,9 @@ interface AppState {
 
 // --- Constants ---
 
-// Using Flash model for the "free API" request as it has a very generous free tier.
+// Using Gemini 3 Flash for high performance and generous free tier
 const LATEST_FLASH_MODEL = 'gemini-3-flash-preview';
-const MASTER_STORAGE_KEY = 'cosmic_compass_master_v3_unified';
+const MASTER_STORAGE_KEY = 'cosmic_compass_v3_unified_safe';
 const PLANETS = ['Sun', 'Moon', 'Mars', 'Mercury', 'Jupiter', 'Venus', 'Saturn', 'Rahu', 'Ketu'];
 
 // --- Firebase Service ---
@@ -70,8 +70,10 @@ const getOrGenerateUserId = (): string => {
 
 const saveLocal = (state: any) => localStorage.setItem(MASTER_STORAGE_KEY, JSON.stringify(state));
 const loadLocal = (defaultState: any) => {
-  const local = localStorage.getItem(MASTER_STORAGE_KEY);
-  return local ? JSON.parse(local) : defaultState;
+  try {
+    const local = localStorage.getItem(MASTER_STORAGE_KEY);
+    return local ? JSON.parse(local) : defaultState;
+  } catch { return defaultState; }
 };
 
 // --- Gemini Service Helpers ---
@@ -90,7 +92,7 @@ function buildAstrologyPrompt(
     : `Generate a Full Navagraha Synthesis & Willpower Analysis. Date: ${dateString}.`;
 
   if (outputLanguage === 'Gujarati') {
-    prompt += ` Respond ONLY in Gujarati. Use high-level Vedic vocabulary.`;
+    prompt += ` Respond ONLY in Gujarati. Use high-level Vedic vocabulary. Always provide specific years like 2030, 2040, and 2050 in the roadmap.`;
   } else {
     prompt += ` Respond in English. Use a mystical yet professional tone.`;
   }
@@ -105,7 +107,7 @@ THE 9-5-1 WILLPOWER LINE:
 NAVAGRAHA MAPPING:
 ${lifeEvents.map(e => `- ${e.planet || 'Unspecified'} Node (${e.date}): ${e.description}`).join('\n')}
 
-Format: Markdown. Tone: Visionary.`;
+Format: Markdown. Tone: Visionary. Focus on long-term projections.`;
   return prompt;
 }
 
@@ -193,7 +195,7 @@ const App: React.FC = () => {
   const handleGenerateReading = async () => {
     setLoading(true);
     try {
-      // Using the environment API key as per instructions.
+      // Accessing process.env.API_KEY safely now that shim is in place
       const ai = new GoogleGenAI({apiKey: process.env.API_KEY});
       const prompt = buildAstrologyPrompt(appState.birthDetails, appState.lifeEvents, appState.outputLanguage);
       const res = await ai.models.generateContent({
@@ -204,7 +206,7 @@ const App: React.FC = () => {
       setReading(res.text || '');
     } catch (e: any) { 
         console.error(e);
-        alert("Error: " + e.message); 
+        alert("Cosmic Alignment Error: " + e.message); 
     } finally { setLoading(false); }
   };
 
@@ -230,7 +232,7 @@ const App: React.FC = () => {
       setAppState(prev => ({ ...prev, chatHistory: [...newHist, { role: 'model', text: result.text || '' }] }));
     } catch (e: any) { 
         console.error(e);
-        alert("Chat Error: " + e.message); 
+        alert("Oracle Disconnected: " + e.message); 
     } finally { setLoading(false); }
   };
 
@@ -239,10 +241,10 @@ const App: React.FC = () => {
       <header className="text-center mb-12">
         <h1 className="font-serif text-5xl text-white font-bold mb-4 bg-clip-text text-transparent bg-gradient-to-b from-white to-indigo-400">Cosmic Compass</h1>
         <div className="flex justify-center space-x-4 items-center">
-          <div className={`px-4 py-1.5 rounded-full border text-[10px] font-black uppercase tracking-widest ${isFirebaseSynced ? 'bg-indigo-500/10 border-indigo-500/30 text-indigo-300' : 'bg-amber-500/10 border-amber-500/30 text-amber-300'}`}>
+          <div className={`px-4 py-1.5 rounded-full border text-[10px] font-black uppercase tracking-widest transition-all ${isFirebaseSynced ? 'bg-indigo-500/10 border-indigo-500/30 text-indigo-300' : 'bg-amber-500/10 border-amber-500/30 text-amber-300'}`}>
             {isFirebaseSynced ? 'Cloud Synced' : 'Sync Pending'}
           </div>
-          <select value={appState.outputLanguage} onChange={e => setAppState(p => ({...p, outputLanguage: e.target.value}))} className="bg-white/5 border border-white/10 rounded-full px-4 py-1.5 text-[10px] font-bold text-indigo-300 outline-none uppercase tracking-widest cursor-pointer">
+          <select value={appState.outputLanguage} onChange={e => setAppState(p => ({...p, outputLanguage: e.target.value}))} className="bg-white/5 border border-white/10 rounded-full px-4 py-1.5 text-[10px] font-bold text-indigo-300 outline-none uppercase tracking-widest cursor-pointer hover:bg-white/10 transition-colors">
             <option value="English">English</option>
             <option value="Gujarati">Gujarati</option>
           </select>
@@ -257,9 +259,9 @@ const App: React.FC = () => {
       </div>
 
       {!appState.isChatMode ? (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 animate-in fade-in duration-500">
           <div className="lg:col-span-4 space-y-6">
-            <section className="glass rounded-[2rem] p-8 border border-white/10 shadow-xl">
+            <section className="glass rounded-[2rem] p-8 border border-white/10 shadow-xl glow-border">
               <h2 className="font-serif text-2xl text-white mb-6">Birth Data</h2>
               <InputField label="Name" id="n" type="text" value={appState.birthDetails.name} onChange={e => setAppState(p => ({...p, birthDetails: {...p.birthDetails, name: e.target.value}}))} />
               <div className="grid grid-cols-2 gap-4">
@@ -273,10 +275,10 @@ const App: React.FC = () => {
                <h2 className="font-serif text-2xl text-white mb-6">Willpower Axis (9-5-1)</h2>
                <div className="grid grid-cols-3 gap-2 p-2 bg-black/20 rounded-xl">
                   {[4,9,2,3,5,7,8,1,6].map(num => (
-                    <div key={num} className={`aspect-square flex items-center justify-center rounded-lg font-black ${[9,5,1].includes(num) ? 'bg-indigo-600 text-white shadow-[0_0_15px_rgba(79,70,229,0.5)]' : 'bg-white/5 text-gray-700'}`}>{num}</div>
+                    <div key={num} className={`aspect-square flex items-center justify-center rounded-lg font-black transition-all ${[9,5,1].includes(num) ? 'bg-indigo-600 text-white shadow-[0_0_15px_rgba(79,70,229,0.5)]' : 'bg-white/5 text-gray-700/50'}`}>{num}</div>
                   ))}
                </div>
-               <p className="mt-4 text-[10px] text-indigo-400 font-bold uppercase tracking-widest text-center">Active Willpower Path Analysis</p>
+               <p className="mt-4 text-[10px] text-indigo-400 font-bold uppercase tracking-widest text-center">Active High-Achievement Potential</p>
             </section>
           </div>
           
@@ -284,11 +286,11 @@ const App: React.FC = () => {
             <section className="glass rounded-[2rem] p-8 flex flex-col min-h-[500px] border border-white/10 shadow-2xl">
               <div className="flex justify-between items-center mb-6">
                 <h2 className="font-serif text-2xl text-white">Timeline (14 Events)</h2>
-                <button onClick={() => setAppState(p => ({...p, lifeEvents: [...p.lifeEvents, {date: '', description: '', planet: 'Mars'}]}))} className="w-8 h-8 rounded-full bg-indigo-600 flex items-center justify-center text-white font-bold">+</button>
+                <button onClick={() => setAppState(p => ({...p, lifeEvents: [...p.lifeEvents, {date: '', description: '', planet: 'Mars'}]}))} className="w-8 h-8 rounded-full bg-indigo-600 flex items-center justify-center text-white font-bold hover:scale-110 active:scale-95 transition-all">+</button>
               </div>
               <div className="space-y-4 overflow-y-auto custom-scrollbar flex-1 pr-2">
                 {appState.lifeEvents.map((ev, i) => (
-                  <div key={i} className="glass-dark p-4 rounded-xl border border-white/5 relative group">
+                  <div key={i} className="glass-dark p-4 rounded-xl border border-white/5 relative group hover:border-white/20 transition-all">
                     <button onClick={() => setAppState(p => ({...p, lifeEvents: p.lifeEvents.filter((_, idx) => idx !== i)}))} className="absolute right-2 top-2 text-gray-600 opacity-0 group-hover:opacity-100 transition-opacity hover:text-red-400">×</button>
                     <div className="flex items-center space-x-2 mb-2">
                        <input type="text" value={ev.date} onChange={e => { const evs = [...appState.lifeEvents]; evs[i].date = e.target.value; setAppState(p => ({...p, lifeEvents: evs})); }} className="bg-transparent text-[10px] text-indigo-400 font-bold uppercase w-1/2 outline-none" />
@@ -304,37 +306,47 @@ const App: React.FC = () => {
           </div>
           
           <div className="lg:col-span-4 space-y-6">
-            <button onClick={handleGenerateReading} disabled={loading} className="w-full py-12 bg-indigo-600 rounded-[2rem] text-white font-bold text-xl shadow-[0_20px_50px_rgba(79,70,229,0.3)] hover:bg-indigo-500 transition-all border border-white/20 active:scale-95">
-              {loading ? "Channeling..." : "Generate Synthesis"}
+            <button onClick={handleGenerateReading} disabled={loading} className="w-full py-12 bg-indigo-600 rounded-[2rem] text-white font-bold text-xl shadow-[0_20px_50px_rgba(79,70,229,0.3)] hover:bg-indigo-500 transition-all border border-white/20 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed">
+              {loading ? "Aligning Stars..." : "Generate Projections"}
             </button>
             {reading && (
-              <div className="glass rounded-[2rem] p-8 text-sm leading-relaxed whitespace-pre-wrap max-h-[400px] overflow-y-auto custom-scrollbar border border-white/10 animate-in fade-in slide-in-from-bottom-4">
-                <div className="text-indigo-400 text-[10px] font-black uppercase mb-4 tracking-widest">Oracle Proclamation</div>
+              <div className="glass rounded-[2rem] p-8 text-sm leading-relaxed whitespace-pre-wrap max-h-[400px] overflow-y-auto custom-scrollbar border border-white/10 animate-in fade-in slide-in-from-bottom-4 shadow-inner">
+                <div className="text-indigo-400 text-[10px] font-black uppercase mb-4 tracking-widest border-b border-indigo-400/20 pb-2">Oracle Roadmap 2030-2050</div>
                 {reading}
               </div>
             )}
           </div>
         </div>
       ) : (
-        <div className="flex flex-col h-[75vh] glass rounded-3xl overflow-hidden shadow-2xl border border-white/10">
+        <div className="flex flex-col h-[75vh] glass rounded-3xl overflow-hidden shadow-2xl border border-white/10 animate-in zoom-in-95 duration-300">
           <div className="px-6 py-4 bg-white/5 border-b border-white/10 flex justify-between items-center">
             <h2 className="text-lg font-bold text-white leading-tight">Cosmic Oracle</h2>
-            <button onClick={() => setAppState(p => ({...p, chatHistory: []}))} className="px-3 py-1.5 text-xs text-gray-400 hover:text-white">Clear</button>
+            <button onClick={() => setAppState(p => ({...p, chatHistory: []}))} className="px-3 py-1.5 text-xs text-gray-400 hover:text-white transition-colors">Clear History</button>
           </div>
           <div className="flex-1 overflow-y-auto p-6 space-y-4 custom-scrollbar bg-black/10">
+            {appState.chatHistory.length === 0 && (
+              <div className="h-full flex flex-col items-center justify-center text-gray-600 italic">
+                Ask the Oracle about your manifestation path...
+              </div>
+            )}
             {appState.chatHistory.map((msg, i) => (
-              <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                <div className={`max-w-[85%] px-5 py-3 rounded-2xl border ${msg.role === 'user' ? 'bg-indigo-600/20 border-indigo-500/30' : 'bg-white/5 border-white/10 text-gray-200'}`}>
+              <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-in slide-in-from-bottom-2`}>
+                <div className={`max-w-[85%] px-5 py-3 rounded-2xl border ${msg.role === 'user' ? 'bg-indigo-600/20 border-indigo-500/30 text-white' : 'bg-white/5 border-white/10 text-gray-200'}`}>
                   <p className="text-sm whitespace-pre-wrap">{msg.text}</p>
                 </div>
               </div>
             ))}
-            {loading && <div className="text-xs text-indigo-400 animate-pulse">Consulting Akasha...</div>}
+            {loading && <div className="text-xs text-indigo-400 animate-pulse pl-4">Channeling Akashic Wisdom...</div>}
             <div ref={chatEndRef} />
           </div>
           <div className="p-4 bg-white/5 border-t border-white/10">
              <div className="relative flex items-center">
-                <input type="text" onKeyDown={e => { if(e.key === 'Enter') handleSendMessage((e.target as HTMLInputElement).value); }} placeholder="Ask the Oracle..." className="w-full bg-black/40 border border-white/10 rounded-2xl py-4 px-6 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50" />
+                <input 
+                  type="text" 
+                  onKeyDown={e => { if(e.key === 'Enter') handleSendMessage((e.target as HTMLInputElement).value); }} 
+                  placeholder="Ask the Oracle..." 
+                  className="w-full bg-black/40 border border-white/10 rounded-2xl py-4 px-6 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all placeholder-gray-600" 
+                />
              </div>
           </div>
         </div>
