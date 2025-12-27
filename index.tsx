@@ -7,10 +7,11 @@ import {
   User, Milestone, Sparkles, Globe, 
   MessageSquare, History, Zap, Compass, RefreshCw,
   Sun, Moon, Star, Send, Trash2, ArrowLeft,
-  Camera, Eye, Layout, Info, MapPin, Clock
+  Camera, Eye, Layout, Info, MapPin, Clock, Share2
 } from 'lucide-react';
 
 // --- Configuration & Constants ---
+// Note: API_KEY is polyfilled in index.html to avoid "process is not defined" error in browser
 const LATEST_PRO_MODEL = 'gemini-3-pro-preview';
 const FIREBASE_CONFIG = {
   apiKey: "AIzaSyDrFjYv2c322zzCMsgpVttjUz9lWDrBoUg",
@@ -23,7 +24,7 @@ const FIREBASE_CONFIG = {
 };
 
 const PLANETS = ['Sun', 'Moon', 'Mars', 'Mercury', 'Jupiter', 'Venus', 'Saturn', 'Rahu', 'Ketu'];
-const MASTER_STORAGE_KEY = 'cosmic_compass_master_v15_final';
+const MASTER_STORAGE_KEY = 'cosmic_compass_master_v16_final';
 
 // --- Types ---
 interface BirthDetails {
@@ -56,6 +57,8 @@ interface AppState {
     numerology: boolean;
     rashifal: boolean;
     jyotish: boolean;
+    palmistry: boolean;
+    faceReading: boolean;
   }
 }
 
@@ -71,7 +74,7 @@ const DEFAULT_STATE: AppState = {
   language: 'Gujarati',
   isChat: false,
   visuals: {},
-  options: { astrology: true, numerology: true, rashifal: true, jyotish: true }
+  options: { astrology: true, numerology: true, rashifal: true, jyotish: true, palmistry: true, faceReading: true }
 };
 
 // --- Firebase Initialization (Singleton) ---
@@ -136,8 +139,8 @@ const App: React.FC = () => {
     const activeArts = Object.keys(options).filter(k => (options as any)[k]).join(', ');
     
     let p = isChat 
-      ? `You are the "Siddhanta Oracle", a supreme combined intelligence of Astrology, Numerology, Rashifal, and Jyotish. Analyze the 9-5-1 willpower axis (Mars-Mercury-Sun) for leadership potential. Language: ${language}. Respond ONLY in ${language}.`
-      : `Provide a comprehensive synthesis of ${activeArts}. Include analysis of the subject's 9-5-1 willpower numerology grid. Language: ${language}. Respond ONLY in ${language}.`;
+      ? `You are the "Siddhanta Oracle", a supreme combined intelligence of Astrology, Numerology (Loshu & Vedic), Rashifal, Jyotish, and Samudrika Shastra (Face/Palm). Analyze the 9-5-1 willpower axis (Mars-Mercury-Sun) for leadership potential. Language: ${language}. Respond ONLY in ${language}.`
+      : `Provide a comprehensive synthesis of ${activeArts}. \n\nCRITICAL ANALYSIS:\n1. **9-5-1 Willpower Axis**: Analyze the presence/absence of 9 (Mars), 5 (Mercury), 1 (Sun) in the birth date grid. Discuss executive power and resilience.\n2. **Navagraha Synthesis**: Combine the planetary positions with the life timeline.\n3. **Visual Reading**: If face/palm provided, integrate physical features with destiny patterns.\n\nLanguage: ${language}. Respond ONLY in ${language}.`;
     
     p += `\nSubject: ${profile.name}, born ${profile.dob} ${profile.tob} at ${profile.pob}.`;
     p += `\nKarmic Timeline: ${timeline.map(n => `${n.date}: ${n.description} (${n.planet})`).join(', ')}.`;
@@ -159,9 +162,9 @@ const App: React.FC = () => {
         contents: { parts },
         config: { tools: [{ googleSearch: {} }] }
       });
-      setOracleReading(res.text || 'The cosmos is silent.');
+      setOracleReading(res.text || 'The cosmos is silent. Verify the connection.');
     } catch (e: any) {
-      alert("Consultation Failed: " + e.message);
+      alert("Consultation Failed: " + e.message + "\nEnsure your API Key is valid for Gemini.");
     } finally { setLoading(false); }
   };
 
@@ -198,7 +201,7 @@ const App: React.FC = () => {
   return (
     <div className="max-w-7xl mx-auto py-12 px-6 pb-24 relative z-10">
       <header className="text-center mb-12">
-        <h1 className="font-serif text-6xl text-white font-black mb-4 tracking-tighter bg-clip-text text-transparent bg-gradient-to-b from-white via-indigo-100 to-indigo-500">Cosmic Oracle</h1>
+        <h1 className="font-serif text-6xl text-white font-black mb-4 tracking-tighter bg-clip-text text-transparent bg-gradient-to-b from-white via-indigo-100 to-indigo-500">Akashic Oracle</h1>
         <div className="flex justify-center items-center space-x-3">
           <div className={`px-4 py-1.5 rounded-full border text-[10px] font-black uppercase tracking-[0.2em] transition-all ${syncing ? 'bg-amber-500/10 border-amber-500/30 text-amber-400' : 'bg-indigo-500/10 border-indigo-500/30 text-indigo-400'}`}>
             {syncing ? 'Syncing Akashic Cloud...' : 'Soul Record Synced (v12.7.0)'}
@@ -252,6 +255,7 @@ const App: React.FC = () => {
                   </div>
                 ))}
               </div>
+              <p className="text-[9px] text-gray-600 font-bold uppercase tracking-widest mt-4">Active Planar Grid</p>
             </section>
           </div>
 
