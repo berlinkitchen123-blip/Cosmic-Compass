@@ -37,7 +37,6 @@ interface AppState {
 
 // --- Constants ---
 
-// Using Gemini 3 Flash for high performance and generous free tier
 const LATEST_FLASH_MODEL = 'gemini-3-flash-preview';
 const MASTER_STORAGE_KEY = 'cosmic_compass_v3_unified_safe';
 const PLANETS = ['Sun', 'Moon', 'Mars', 'Mercury', 'Jupiter', 'Venus', 'Saturn', 'Rahu', 'Ketu'];
@@ -193,10 +192,15 @@ const App: React.FC = () => {
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [appState.chatHistory]);
 
   const handleGenerateReading = async () => {
+    const key = process.env.API_KEY;
+    if (!key) {
+      alert("Configuration Error: System API Key is missing.");
+      return;
+    }
+
     setLoading(true);
     try {
-      // Accessing process.env.API_KEY safely now that shim is in place
-      const ai = new GoogleGenAI({apiKey: process.env.API_KEY});
+      const ai = new GoogleGenAI({apiKey: key});
       const prompt = buildAstrologyPrompt(appState.birthDetails, appState.lifeEvents, appState.outputLanguage);
       const res = await ai.models.generateContent({
         model: LATEST_FLASH_MODEL,
@@ -212,7 +216,10 @@ const App: React.FC = () => {
 
   const handleSendMessage = async (text: string) => {
     if (!text.trim()) return;
-    const ai = new GoogleGenAI({apiKey: process.env.API_KEY});
+    const key = process.env.API_KEY;
+    if (!key) return;
+
+    const ai = new GoogleGenAI({apiKey: key});
     if (!chatSessionRef.current) {
       chatSessionRef.current = ai.chats.create({
         model: LATEST_FLASH_MODEL,
