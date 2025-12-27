@@ -203,16 +203,19 @@ const App: React.FC = () => {
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [appState.chatHistory]);
 
   const ensureApiKey = async () => {
+    // If aistudio is available, always check it
     if (window.aistudio) {
       const selected = await window.aistudio.hasSelectedApiKey();
       if (!selected) {
         await window.aistudio.openSelectKey();
+        // Assume success as per guidelines to avoid race condition
         setHasApiKey(true);
         return true;
       }
       setHasApiKey(true);
       return true;
     }
+    // Check injected env key
     if (process.env.API_KEY && process.env.API_KEY.length > 5) {
       setHasApiKey(true);
       return true;
@@ -221,12 +224,21 @@ const App: React.FC = () => {
   };
 
   const handleGenerateReading = async () => {
+    // If key check fails, force selection before proceeding
     const ready = await ensureApiKey();
-    if (!ready) { alert("Please connect to the Oracle using your API Key."); return; }
+    if (!ready) {
+      if (window.aistudio) {
+        await window.aistudio.openSelectKey();
+        setHasApiKey(true);
+      } else {
+        alert("API Key missing. Please ensure you are in an environment that provides a Gemini API key.");
+        return;
+      }
+    }
 
     setLoading(true);
     try {
-      // Create new instance to ensure up-to-date key
+      // Create new instance right before use to get latest key
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       const res = await ai.models.generateContent({
         model: LATEST_PRO_MODEL,
@@ -235,13 +247,18 @@ const App: React.FC = () => {
       });
       setReading(res.text || '');
     } catch (e: any) {
-      console.error(e);
-      // If error is 403 or blocked, prompt for key selection again
-      if (e.message?.includes("blocked") || e.message?.includes("403") || e.message?.includes("not found")) {
-        alert("The Oracle connection is blocked. Please select a valid paid API key.");
+      console.error("Gemini API Error:", e);
+      // Specific handling for 403 Forbidden / API_KEY_SERVICE_BLOCKED
+      if (e.message?.includes("403") || e.message?.includes("blocked") || e.message?.includes("PERMISSION_DENIED")) {
+        alert("The current API Key is blocked or restricted for this model. Please select a valid key from a PAID Google Cloud project.");
+        if (window.aistudio) {
+          await window.aistudio.openSelectKey();
+          setHasApiKey(true);
+        }
+      } else if (e.message?.includes("not found")) {
         if (window.aistudio) await window.aistudio.openSelectKey();
       } else {
-        alert("Cosmic Alignment Error: " + (e.message || "Unknown error"));
+        alert("Cosmic Alignment Error: " + (e.message || "Please check your network and API Key permissions."));
       }
     } finally { setLoading(false); }
   };
@@ -253,7 +270,6 @@ const App: React.FC = () => {
 
     setLoading(true);
     try {
-      // Create new instance for chat as well
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       if (!chatSessionRef.current) {
         chatSessionRef.current = ai.chats.create({
@@ -271,11 +287,11 @@ const App: React.FC = () => {
       const result = await chatSessionRef.current.sendMessage({ message: text });
       setAppState(prev => ({ ...prev, chatHistory: [...newHist, { role: 'model', text: result.text || '' }] }));
     } catch (e: any) {
-      console.error(e);
-      if (e.message?.includes("blocked") || e.message?.includes("403")) {
+      console.error("Chat Error:", e);
+      if (e.message?.includes("403") || e.message?.includes("blocked")) {
         if (window.aistudio) await window.aistudio.openSelectKey();
       }
-      alert("Oracle Disconnected: " + e.message);
+      alert("Oracle Disconnected: " + (e.message || "Unknown error"));
     } finally { setLoading(false); }
   };
 
@@ -291,7 +307,7 @@ const App: React.FC = () => {
             onClick={() => window.aistudio?.openSelectKey()} 
             className={`px-4 py-1.5 rounded-full border text-[10px] font-black uppercase tracking-widest transition-all ${hasApiKey ? 'bg-indigo-600/20 border-indigo-500/30 text-indigo-300' : 'bg-red-500/20 border-red-500/30 text-red-300 animate-pulse'}`}
           >
-            {hasApiKey ? 'Oracle Connected' : 'Connect to Oracle'}
+            {hasApiKey ? 'Oracle Connected' : 'Configure API Key'}
           </button>
           <select value={appState.outputLanguage} onChange={e => setAppState(p => ({...p, outputLanguage: e.target.value}))} className="bg-white/5 border border-white/10 rounded-full px-4 py-1.5 text-[10px] font-bold text-indigo-300 outline-none uppercase tracking-widest cursor-pointer hover:bg-white/10 transition-colors">
             <option value="English">English</option>
@@ -299,7 +315,7 @@ const App: React.FC = () => {
           </select>
         </div>
         <p className="mt-4 text-[9px] text-gray-500 uppercase tracking-widest">
-          Ensure you select a API key from a <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" className="underline text-indigo-400">paid Google Cloud project</a> for Pro model access.
+          Tip: If Pro results are blocked, ensure your selected project has <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" className="underline text-indigo-400">billing enabled</a>.
         </p>
       </header>
 
