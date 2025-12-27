@@ -4,6 +4,15 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Cosmic Compass | AI Astrology & Numerology</title>
+    <script>
+      // Defensive shim to prevent ReferenceError: process is not defined
+      // We use a getter to avoid overwriting the environment's injected API_KEY
+      if (typeof window.process === 'undefined') {
+        window.process = { env: { API_KEY: "" } };
+      } else if (!window.process.env) {
+        window.process.env = { API_KEY: "" };
+      }
+    </script>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:ital,wght@0,700;1,700&display=swap" rel="stylesheet">
     <style>
@@ -56,11 +65,6 @@
         }
     </style>
     
-    <script>
-      // Defensive shim to prevent ReferenceError while preserving injected keys
-      window.process = window.process || { env: {} };
-    </script>
-
     <script type="importmap">
 {
   "imports": {
@@ -90,13 +94,13 @@
               const star = document.createElement('div');
               star.className = 'star';
               const size = Math.random() * 2 + 1;
-              const duration = Math.random() * 3 + 2;
-              star.style.width = `${size}px`;
-              star.style.height = `${size}px`;
-              star.style.left = `${Math.random() * 100}%`;
-              star.style.top = `${Math.random() * 100}%`;
-              // Fixed the property setting syntax error
-              star.style.setProperty('--duration', `${duration}s`);
+              const durationValue = Math.random() * 3 + 2;
+              star.style.width = size + 'px';
+              star.style.height = size + 'px';
+              star.style.left = (Math.random() * 100) + '%';
+              star.style.top = (Math.random() * 100) + '%';
+              // Fixed the property setting syntax by using string concatenation for safety
+              star.style.setProperty('--duration', durationValue + 's');
               container.appendChild(star);
           }
         }

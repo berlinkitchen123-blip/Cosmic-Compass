@@ -110,6 +110,13 @@ Format: Markdown. Tone: Visionary. Focus on long-term projections.`;
   return prompt;
 }
 
+// --- Validation ---
+
+const isApiKeyValid = () => {
+  const key = process.env.API_KEY;
+  return key && key.length > 5 && key !== 'undefined' && key !== 'null';
+};
+
 // --- Components ---
 
 const InputField: React.FC<{ label: string; id: string; type: string; value: string; onChange: (e: any) => void }> = ({ label, id, type, value, onChange }) => (
@@ -192,15 +199,15 @@ const App: React.FC = () => {
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [appState.chatHistory]);
 
   const handleGenerateReading = async () => {
-    const key = process.env.API_KEY;
-    if (!key) {
-      alert("Configuration Error: System API Key is missing.");
+    if (!isApiKeyValid()) {
+      alert("Configuration Error: API Key is missing or invalid in your environment.");
       return;
     }
 
     setLoading(true);
     try {
-      const ai = new GoogleGenAI({apiKey: key});
+      // Strictly use process.env.API_KEY as per guidelines
+      const ai = new GoogleGenAI({apiKey: process.env.API_KEY});
       const prompt = buildAstrologyPrompt(appState.birthDetails, appState.lifeEvents, appState.outputLanguage);
       const res = await ai.models.generateContent({
         model: LATEST_FLASH_MODEL,
@@ -216,10 +223,9 @@ const App: React.FC = () => {
 
   const handleSendMessage = async (text: string) => {
     if (!text.trim()) return;
-    const key = process.env.API_KEY;
-    if (!key) return;
+    if (!isApiKeyValid()) return;
 
-    const ai = new GoogleGenAI({apiKey: key});
+    const ai = new GoogleGenAI({apiKey: process.env.API_KEY});
     if (!chatSessionRef.current) {
       chatSessionRef.current = ai.chats.create({
         model: LATEST_FLASH_MODEL,
@@ -293,7 +299,7 @@ const App: React.FC = () => {
             <section className="glass rounded-[2rem] p-8 flex flex-col min-h-[500px] border border-white/10 shadow-2xl">
               <div className="flex justify-between items-center mb-6">
                 <h2 className="font-serif text-2xl text-white">Timeline (14 Events)</h2>
-                <button onClick={() => setAppState(p => ({...p, lifeEvents: [...p.lifeEvents, {date: '', description: '', planet: 'Mars'}]}))} className="w-8 h-8 rounded-full bg-indigo-600 flex items-center justify-center text-white font-bold hover:scale-110 active:scale-95 transition-all">+</button>
+                <button onClick={() => setAppState(p => ({...p, lifeEvents: [...p.lifeEvents, {date: '', description: '', planet: 'Mars'}]}))} className="w-8 h-8 rounded-full bg-indigo-600 text-white flex items-center justify-center font-bold hover:scale-110 active:scale-95 transition-all">+</button>
               </div>
               <div className="space-y-4 overflow-y-auto custom-scrollbar flex-1 pr-2">
                 {appState.lifeEvents.map((ev, i) => (
