@@ -5,13 +5,12 @@ import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getDatabase, ref, set, get } from 'firebase/database';
 import { 
   User, Milestone, Sparkles, Globe, 
-  MessageSquare, History, Zap, Compass, RefreshCw
+  MessageSquare, History, Zap, Compass, RefreshCw,
+  Sun, Moon, Star, Send, Trash2, ArrowLeft
 } from 'lucide-react';
 
 // --- Configuration ---
 const LATEST_PRO_MODEL = 'gemini-3-pro-preview';
-const LATEST_FLASH_MODEL = 'gemini-3-flash-preview';
-
 const FIREBASE_CONFIG = {
   apiKey: "AIzaSyDrFjYv2c322zzCMsgpVttjUz9lWDrBoUg",
   authDomain: "cosmic-compass-5fd5e.firebaseapp.com",
@@ -26,11 +25,11 @@ const PLANETS = ['Sun', 'Moon', 'Mars', 'Mercury', 'Jupiter', 'Venus', 'Saturn',
 const MASTER_STORAGE_KEY = 'cosmic_compass_master_v11';
 
 // --- Firebase Init ---
-// Explicitly providing the databaseURL in getDatabase is critical to resolve "Service database is not available"
+// Consistent initialization on a single instance using explicit databaseURL.
 const app = getApps().length === 0 ? initializeApp(FIREBASE_CONFIG) : getApp();
 const db = getDatabase(app, FIREBASE_CONFIG.databaseURL);
 
-// --- Interface Definitions ---
+// --- Interfaces ---
 interface ProfileData {
   name: string;
   dob: string;
@@ -69,7 +68,7 @@ const DEFAULT_STATE: AppState = {
   isChatMode: false
 };
 
-// --- Components ---
+// --- Helper Components ---
 
 const InputField = ({ label, type, value, onChange }: any) => (
   <div className="mb-4">
@@ -104,7 +103,7 @@ const App: React.FC = () => {
   const chatEndRef = useRef<HTMLDivElement>(null);
   const chatSessionRef = useRef<Chat | null>(null);
 
-  // Initial Cloud Load
+  // Sync with Cloud
   useEffect(() => {
     const initCloud = async () => {
       try {
@@ -112,25 +111,19 @@ const App: React.FC = () => {
         if (snap.exists()) {
           setState(prev => ({ ...prev, ...snap.val() }));
         }
-      } catch (e) { 
-        console.error("Cloud Error:", e); 
-      }
+      } catch (e) { console.error("Cloud Error:", e); }
     };
     initCloud();
   }, [userId]);
 
-  // Save/Sync Effect
   useEffect(() => {
     localStorage.setItem(MASTER_STORAGE_KEY, JSON.stringify(state));
     const timer = setTimeout(async () => {
       setSyncing(true);
       try {
         await set(ref(db, `users/${userId}`), { ...state, lastUpdated: new Date().toISOString() });
-      } catch (err) {
-        console.error("Sync failed:", err);
-      } finally { 
-        setSyncing(false); 
-      }
+      } catch (e) { console.error("Sync Error:", e); }
+      finally { setSyncing(false); }
     }, 2000);
     return () => clearTimeout(timer);
   }, [state, userId]);
@@ -142,17 +135,17 @@ const App: React.FC = () => {
   const buildPrompt = (isChat: boolean) => {
     const { profile, timeline } = state;
     let p = isChat 
-      ? "You are the Siddhanta Oracle. Analyze the 9-5-1 willpower axis (Mars-Mercury-Sun) for peak leadership potential. Look specifically at 2030, 2040, and 2050 timeline nodes."
-      : "Provide a comprehensive Astrology, Numerology, Jyotish, and Rashifal synthesis.";
+      ? "You are the Siddhanta Oracle. Analyze the 9-5-1 willpower axis (Mars-Mercury-Sun) for leadership potential. Provide deep insights into 2030, 2040, and 2050 timeline peaks."
+      : "Provide a comprehensive Astrology, Numerology, and Jyotish synthesis based on Navagraha mapping and the 9-5-1 axis.";
     p += ` Language: ${profile.language}. Respond ONLY in this language.`;
-    p += ` Profile: ${profile.name}, born ${profile.dob} ${profile.tob} at ${profile.pob}.`;
-    p += ` Key Timeline Nodes: ${timeline.map(t => `${t.date}: ${t.description} (${t.planet})`).join(', ')}.`;
-    p += ` Detailed focus: Analyze the 9-5-1 axis (Numerology Willpower Line). Project health, wealth, and career peaks for 2030, 2040, and 2050. Use high-level Vedic terminology.`;
+    p += ` User: ${profile.name}, born ${profile.dob} ${profile.tob} at ${profile.pob}.`;
+    p += ` Life Nodes: ${timeline.map(t => `${t.date}: ${t.description} (${t.planet})`).join(', ')}.`;
     return p;
   };
 
-  const handleGenerate = async () => {
+  const handleGenerateSynthesis = async () => {
     setLoading(true);
+    setReading('');
     try {
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       const res = await ai.models.generateContent({
@@ -160,13 +153,10 @@ const App: React.FC = () => {
         contents: buildPrompt(false),
         config: { tools: [{ googleSearch: {} }] }
       });
-      setReading(res.text || 'The stars are silent.');
+      setReading(res.text || 'Cosmic transmission failed.');
     } catch (e: any) {
-      console.error(e);
       alert("Consultation failed: " + e.message);
-    } finally { 
-      setLoading(false); 
-    }
+    } finally { setLoading(false); }
   };
 
   const handleSendMessage = async (text: string) => {
@@ -179,29 +169,26 @@ const App: React.FC = () => {
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       if (!chatSessionRef.current) {
         chatSessionRef.current = ai.chats.create({
-          model: LATEST_FLASH_MODEL,
+          model: LATEST_PRO_MODEL,
           config: { systemInstruction: buildPrompt(true) }
         });
       }
       const res = await chatSessionRef.current.sendMessage({ message: text });
       setState(p => ({ ...p, chatHistory: [...newHist, { role: 'model', text: res.text || '' }] }));
     } catch (e: any) {
-      console.error(e);
-      alert("Oracle Interrupted: " + e.message);
-    } finally { 
-      setLoading(false); 
-    }
+      alert("Oracle Error: " + e.message);
+    } finally { setLoading(false); }
   };
 
   return (
-    <div className="max-w-7xl mx-auto py-12 px-6 pb-24">
+    <div className="max-w-7xl mx-auto py-12 px-6 pb-24 relative">
       <header className="text-center mb-12">
-        <h1 className="font-serif text-6xl text-white font-black mb-4 tracking-tighter bg-clip-text text-transparent bg-gradient-to-b from-white to-indigo-500">Cosmic Compass</h1>
+        <h1 className="font-serif text-6xl text-white font-black mb-4 tracking-tighter bg-clip-text text-transparent bg-gradient-to-b from-white via-indigo-200 to-indigo-500">Cosmic Compass</h1>
         <div className="flex justify-center items-center space-x-3">
-          <div className={`px-4 py-1 rounded-full border text-[10px] font-black uppercase tracking-widest ${syncing ? 'bg-amber-500/10 border-amber-500/30 text-amber-400' : 'bg-indigo-500/10 border-indigo-500/30 text-indigo-400'}`}>
-            {syncing ? 'Syncing...' : 'Cloud Connected'}
+          <div className={`px-4 py-1.5 rounded-full border text-[10px] font-black uppercase tracking-widest transition-all ${syncing ? 'bg-amber-500/10 border-amber-500/30 text-amber-400' : 'bg-indigo-500/10 border-indigo-500/30 text-indigo-400'}`}>
+            {syncing ? 'Synchronizing...' : 'Akashic Record Linked'}
           </div>
-          <select value={state.profile.language} onChange={e => setState(p => ({...p, profile: {...p.profile, language: e.target.value}}))} className="bg-white/5 border border-white/10 rounded-full px-4 py-1 text-[10px] font-bold text-indigo-300 uppercase outline-none cursor-pointer">
+          <select value={state.profile.language} onChange={e => setState(p => ({...p, profile: {...p.profile, language: e.target.value}}))} className="bg-white/5 border border-white/10 rounded-full px-4 py-1.5 text-[10px] font-bold text-indigo-300 uppercase outline-none cursor-pointer">
             <option value="English">English</option>
             <option value="Gujarati">Gujarati</option>
             <option value="Hindi">Hindi</option>
@@ -211,43 +198,44 @@ const App: React.FC = () => {
 
       <div className="flex justify-center mb-12">
         <div className="glass p-1.5 rounded-2xl flex space-x-2 shadow-2xl">
-          <button onClick={() => setState(p => ({...p, isChatMode: false}))} className={`px-10 py-3 rounded-xl font-bold transition-all ${!state.isChatMode ? 'bg-indigo-600 text-white shadow-lg' : 'text-gray-400 hover:text-white'}`}>Profile Chart</button>
-          <button onClick={() => setState(p => ({...p, isChatMode: true}))} className={`px-10 py-3 rounded-xl font-bold transition-all ${state.isChatMode ? 'bg-purple-600 text-white shadow-lg' : 'text-gray-400 hover:text-white'}`}>Oracle Chat</button>
+          <button onClick={() => setState(p => ({...p, isChatMode: false}))} className={`px-10 py-3 rounded-xl font-bold transition-all ${!state.isChatMode ? 'bg-indigo-600 text-white shadow-lg' : 'text-gray-400 hover:text-white'}`}>Profile Mandali</button>
+          <button onClick={() => setState(p => ({...p, isChatMode: true}))} className={`px-10 py-3 rounded-xl font-bold transition-all ${state.isChatMode ? 'bg-purple-600 text-white shadow-lg' : 'text-gray-400 hover:text-white'}`}>Universal Oracle</button>
         </div>
       </div>
 
       {!state.isChatMode ? (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 animate-in fade-in duration-500">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 animate-in fade-in duration-500 items-start">
           <div className="lg:col-span-4 space-y-6">
-            <section className="glass rounded-[2rem] p-8 glow-border">
-              <h2 className="font-serif text-2xl text-white mb-8 flex items-center space-x-2">
+            <section className="glass rounded-[2rem] p-8 glow-border shadow-2xl">
+              <h2 className="font-serif text-2xl text-white mb-8 flex items-center space-x-3">
                 <User size={20} className="text-indigo-400"/>
                 <span>Birth Records</span>
               </h2>
-              <InputField label="Full Name" type="text" value={state.profile.name} onChange={(v: string) => setState(p => ({...p, profile: {...p.profile, name: v}}))} />
+              <InputField label="Name" type="text" value={state.profile.name} onChange={(v: string) => setState(p => ({...p, profile: {...p.profile, name: v}}))} />
               <div className="grid grid-cols-2 gap-4">
-                <InputField label="Birth Date" type="date" value={state.profile.dob} onChange={(v: string) => setState(p => ({...p, profile: {...p.profile, dob: v}}))} />
-                <InputField label="Birth Time" type="time" value={state.profile.tob} onChange={(v: string) => setState(p => ({...p, profile: {...p.profile, tob: v}}))} />
+                <InputField label="Date of Birth" type="date" value={state.profile.dob} onChange={(v: string) => setState(p => ({...p, profile: {...p.profile, dob: v}}))} />
+                <InputField label="Time" type="time" value={state.profile.tob} onChange={(v: string) => setState(p => ({...p, profile: {...p.profile, tob: v}}))} />
               </div>
-              <InputField label="Place of Birth" type="text" value={state.profile.pob} onChange={(v: string) => setState(p => ({...p, profile: {...p.profile, pob: v}}))} />
+              <InputField label="Birth Place" type="text" value={state.profile.pob} onChange={(v: string) => setState(p => ({...p, profile: {...p.profile, pob: v}}))} />
             </section>
 
             <section className="glass rounded-[2rem] p-8 text-center border border-white/5">
               <h3 className="text-[10px] uppercase font-black text-indigo-400 mb-6 tracking-[0.3em]">9-5-1 Willpower Axis</h3>
-              <div className="grid grid-cols-3 gap-2 max-w-[150px] mx-auto">
+              <div className="grid grid-cols-3 gap-2 max-w-[150px] mx-auto mb-4">
                 {[4, 9, 2, 3, 5, 7, 8, 1, 6].map(num => (
                   <div key={num} className={`aspect-square flex items-center justify-center text-xs font-bold rounded-lg border ${[9, 5, 1].includes(num) ? 'bg-indigo-600/30 border-indigo-400 text-white willpower-glow' : 'bg-black/20 border-white/5 text-gray-700'}`}>
                     {num}
                   </div>
                 ))}
               </div>
+              <p className="text-[9px] text-gray-500 italic">Willpower Visualization</p>
             </section>
           </div>
 
           <div className="lg:col-span-4">
-            <section className="glass rounded-[2rem] p-8 flex flex-col min-h-[550px] glow-border">
+            <section className="glass rounded-[2rem] p-8 flex flex-col min-h-[550px] glow-border shadow-2xl">
               <div className="flex justify-between items-center mb-8">
-                <h2 className="font-serif text-2xl text-white flex items-center space-x-2">
+                <h2 className="font-serif text-2xl text-white flex items-center space-x-3">
                   <Milestone size={20} className="text-amber-400"/>
                   <span>Karma Nodes</span>
                 </h2>
@@ -263,7 +251,7 @@ const App: React.FC = () => {
                          {PLANETS.map(p => <option key={p} value={p}>{p}</option>)}
                        </select>
                     </div>
-                    <textarea value={item.description} onChange={e => { const t = [...state.timeline]; t[i].description = e.target.value; setState(p => ({...p, timeline: t})); }} className="bg-transparent text-xs text-gray-300 w-full resize-none outline-none" rows={2} placeholder="Event description..." />
+                    <textarea value={item.description} onChange={e => { const t = [...state.timeline]; t[i].description = e.target.value; setState(p => ({...p, timeline: t})); }} className="bg-transparent text-xs text-gray-300 w-full resize-none outline-none" rows={2} placeholder="Life event details..." />
                   </div>
                 ))}
               </div>
@@ -271,7 +259,7 @@ const App: React.FC = () => {
           </div>
 
           <div className="lg:col-span-4 space-y-6">
-            <button onClick={handleGenerate} disabled={loading} className="w-full py-12 bg-indigo-600 rounded-[2.5rem] text-white font-black text-xl shadow-2xl hover:bg-indigo-500 transition-all border border-white/20 active:scale-95 disabled:opacity-50">
+            <button onClick={handleGenerateSynthesis} disabled={loading} className="w-full py-12 bg-indigo-600 rounded-[2.5rem] text-white font-black text-xl shadow-2xl hover:bg-indigo-500 transition-all border border-white/20 active:scale-95 disabled:opacity-50">
               {loading ? "Aligning Navagraha..." : "Generate Cosmic Synthesis"}
             </button>
             {reading && (
@@ -279,21 +267,31 @@ const App: React.FC = () => {
                 {reading}
               </div>
             )}
+            <button onClick={() => setState(p => ({...p, isChatMode: true}))} className="w-full py-4 rounded-2xl bg-white/5 hover:bg-white/10 text-indigo-400 font-bold text-[10px] uppercase tracking-widest border border-indigo-500/20 transition-all">Consult the Universal Oracle</button>
           </div>
         </div>
       ) : (
         <div className="flex flex-col h-[70vh] glass rounded-[2.5rem] overflow-hidden border border-white/10 shadow-2xl animate-in zoom-in-95 duration-300">
           <div className="px-8 py-5 bg-white/5 border-b border-white/10 flex justify-between items-center">
             <div className="flex items-center space-x-3">
-              <div className="w-10 h-10 rounded-full bg-indigo-600 flex items-center justify-center text-white shadow-xl">🔮</div>
-              <h2 className="text-xl font-bold text-white">Universal Oracle</h2>
+              <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-indigo-600 to-purple-600 flex items-center justify-center text-white shadow-xl">🔮</div>
+              <h2 className="text-xl font-bold text-white leading-tight">Universal Oracle</h2>
             </div>
-            <button onClick={() => setState(p => ({...p, chatHistory: []}))} className="px-4 py-1.5 text-[10px] font-black uppercase text-gray-400 hover:text-white border border-white/10 rounded-full">Clear Session</button>
+            <div className="flex items-center space-x-4">
+              <button onClick={() => setState(p => ({...p, chatHistory: []}))} className="px-3 py-1.5 text-[10px] font-black uppercase text-gray-400 hover:text-white rounded-lg transition-all">Clear Session</button>
+              <button onClick={() => setState(p => ({...p, isChatMode: false}))} className="px-4 py-1.5 text-[10px] font-black uppercase bg-indigo-600/20 text-indigo-300 rounded-lg border border-indigo-500/20">Back to Profile</button>
+            </div>
           </div>
           <div className="flex-1 overflow-y-auto p-8 space-y-6 custom-scrollbar bg-black/10">
+            {state.chatHistory.length === 0 && (
+              <div className="h-full flex flex-col items-center justify-center opacity-30 text-center space-y-4">
+                <Sparkles size={48} className="text-indigo-400"/>
+                <p className="font-serif italic text-lg text-white">Ask of your path through the 9-5-1 axis...</p>
+              </div>
+            )}
             {state.chatHistory.map((msg, i) => (
               <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-in fade-in slide-in-from-bottom-2`}>
-                <div className={`max-w-[80%] px-6 py-4 rounded-2xl border ${msg.role === 'user' ? 'bg-indigo-600/30 border-indigo-500/40 text-white' : 'bg-white/5 border-white/10 text-gray-200'}`}>
+                <div className={`max-w-[80%] px-6 py-4 rounded-2xl border ${msg.role === 'user' ? 'bg-indigo-600/30 border-indigo-500/40 text-white shadow-lg' : 'bg-white/5 border-white/10 text-gray-200'}`}>
                   <p className="text-sm leading-relaxed whitespace-pre-wrap">{msg.text}</p>
                 </div>
               </div>
@@ -302,12 +300,21 @@ const App: React.FC = () => {
             <div ref={chatEndRef} />
           </div>
           <div className="p-6 bg-white/5 border-t border-white/10">
-             <input 
-               type="text" 
-               onKeyDown={e => { if(e.key === 'Enter') { handleSendMessage((e.target as HTMLInputElement).value); (e.target as HTMLInputElement).value = ''; } }} 
-               placeholder="Ask about destiny, 2030 peaks, or Navagraha balance..." 
-               className="w-full bg-black/40 border border-white/10 rounded-2xl py-5 px-8 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 shadow-inner" 
-             />
+             <div className="relative">
+               <input 
+                 type="text" 
+                 onKeyDown={e => { if(e.key === 'Enter') { handleSendMessage((e.target as HTMLInputElement).value); (e.target as HTMLInputElement).value = ''; } }} 
+                 placeholder="Inquire about your cosmic nodes..." 
+                 className="w-full bg-black/40 border border-white/10 rounded-2xl py-5 px-8 pr-16 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 shadow-inner" 
+               />
+               <button onClick={(e) => { 
+                 const input = (e.currentTarget.previousSibling as HTMLInputElement); 
+                 handleSendMessage(input.value); 
+                 input.value = ''; 
+               }} className="absolute right-4 top-1/2 -translate-y-1/2 p-2 text-indigo-400 hover:text-white transition-colors">
+                 <Send size={20} />
+               </button>
+             </div>
           </div>
         </div>
       )}

@@ -22,16 +22,13 @@
             -webkit-backdrop-filter: blur(12px);
             border: 1px solid rgba(255, 255, 255, 0.1);
         }
-        .navagraha-orbit {
-            animation: rotate 60s linear infinite;
-        }
-        @keyframes rotate { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
         .custom-scrollbar::-webkit-scrollbar { width: 5px; }
         .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.1); border-radius: 10px; }
         .willpower-glow { box-shadow: 0 0 20px var(--accent-glow); }
         .twinkle { animation: twinkle 4s ease-in-out infinite; }
         @keyframes twinkle { 0%, 100% { opacity: 0.2; } 50% { opacity: 0.8; } }
+        .glow-border { border: 1px solid rgba(99, 102, 241, 0.2); }
     </style>
     <script type="importmap">
 {
@@ -56,17 +53,17 @@
     <script>
         const container = document.getElementById('stars-container');
         if (container) {
-          for (let i = 0; i < 100; i++) {
-              const star = document.createElement('div');
-              star.className = 'absolute bg-white rounded-full twinkle';
-              const size = Math.random() * 2 + 1;
-              star.style.width = size + 'px';
-              star.style.height = size + 'px';
-              star.style.left = Math.random() * 100 + '%';
-              star.style.top = Math.random() * 100 + '%';
-              star.style.animationDelay = Math.random() * 5 + 's';
-              container.appendChild(star);
-          }
+            for (let i = 0; i < 100; i++) {
+                const star = document.createElement('div');
+                star.className = 'absolute bg-white rounded-full twinkle';
+                const size = Math.random() * 2 + 1;
+                star.style.width = size + 'px';
+                star.style.height = size + 'px';
+                star.style.left = Math.random() * 100 + '%';
+                star.style.top = Math.random() * 100 + '%';
+                star.style.animationDelay = Math.random() * 5 + 's';
+                container.appendChild(star);
+            }
         }
     </script>
     <script type="module" src="index.tsx"></script>
