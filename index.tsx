@@ -42,7 +42,6 @@ declare global {
     openSelectKey: () => Promise<void>;
   }
   interface Window {
-    // Fix: Added optional modifier to match environment declaration to avoid 'identical modifiers' error
     aistudio?: AIStudio;
   }
 }
@@ -168,10 +167,11 @@ const App: React.FC = () => {
   // Initial Key Check
   useEffect(() => {
     const checkKey = async () => {
-      if (process.env.API_KEY && process.env.API_KEY.length > 5) {
+      if (window.aistudio) {
+        const selected = await window.aistudio.hasSelectedApiKey();
+        setHasApiKey(selected);
+      } else if (process.env.API_KEY && process.env.API_KEY.length > 5) {
         setHasApiKey(true);
-      } else if (window.aistudio) {
-        setHasApiKey(await window.aistudio.hasSelectedApiKey());
       }
     };
     checkKey();
@@ -203,23 +203,30 @@ const App: React.FC = () => {
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [appState.chatHistory]);
 
   const ensureApiKey = async () => {
-    if (!process.env.API_KEY || process.env.API_KEY.length < 5) {
-      if (window.aistudio) {
+    if (window.aistudio) {
+      const selected = await window.aistudio.hasSelectedApiKey();
+      if (!selected) {
         await window.aistudio.openSelectKey();
         setHasApiKey(true);
         return true;
       }
-      return false;
+      setHasApiKey(true);
+      return true;
     }
-    return true;
+    if (process.env.API_KEY && process.env.API_KEY.length > 5) {
+      setHasApiKey(true);
+      return true;
+    }
+    return false;
   };
 
   const handleGenerateReading = async () => {
     const ready = await ensureApiKey();
-    if (!ready) { alert("Please configure an API Key to proceed."); return; }
+    if (!ready) { alert("Please connect to the Oracle using your API Key."); return; }
 
     setLoading(true);
     try {
+      // Create new instance to ensure up-to-date key
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       const res = await ai.models.generateContent({
         model: LATEST_PRO_MODEL,
@@ -229,8 +236,10 @@ const App: React.FC = () => {
       setReading(res.text || '');
     } catch (e: any) {
       console.error(e);
-      if (e.message?.includes("not found")) {
-        await window.aistudio?.openSelectKey();
+      // If error is 403 or blocked, prompt for key selection again
+      if (e.message?.includes("blocked") || e.message?.includes("403") || e.message?.includes("not found")) {
+        alert("The Oracle connection is blocked. Please select a valid paid API key.");
+        if (window.aistudio) await window.aistudio.openSelectKey();
       } else {
         alert("Cosmic Alignment Error: " + (e.message || "Unknown error"));
       }
@@ -244,6 +253,7 @@ const App: React.FC = () => {
 
     setLoading(true);
     try {
+      // Create new instance for chat as well
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       if (!chatSessionRef.current) {
         chatSessionRef.current = ai.chats.create({
@@ -262,6 +272,9 @@ const App: React.FC = () => {
       setAppState(prev => ({ ...prev, chatHistory: [...newHist, { role: 'model', text: result.text || '' }] }));
     } catch (e: any) {
       console.error(e);
+      if (e.message?.includes("blocked") || e.message?.includes("403")) {
+        if (window.aistudio) await window.aistudio.openSelectKey();
+      }
       alert("Oracle Disconnected: " + e.message);
     } finally { setLoading(false); }
   };
@@ -274,14 +287,20 @@ const App: React.FC = () => {
           <div className={`px-4 py-1.5 rounded-full border text-[10px] font-black uppercase tracking-widest transition-all ${isFirebaseSynced ? 'bg-indigo-500/10 border-indigo-500/30 text-indigo-300' : 'bg-amber-500/10 border-amber-500/30 text-amber-300'}`}>
             {isFirebaseSynced ? 'Cloud Synced' : 'Sync Pending'}
           </div>
-          {!hasApiKey && (
-             <button onClick={() => window.aistudio?.openSelectKey()} className="px-4 py-1.5 rounded-full bg-red-500/20 border border-red-500/30 text-red-300 text-[10px] font-black uppercase tracking-widest animate-pulse">Connect to Oracle</button>
-          )}
+          <button 
+            onClick={() => window.aistudio?.openSelectKey()} 
+            className={`px-4 py-1.5 rounded-full border text-[10px] font-black uppercase tracking-widest transition-all ${hasApiKey ? 'bg-indigo-600/20 border-indigo-500/30 text-indigo-300' : 'bg-red-500/20 border-red-500/30 text-red-300 animate-pulse'}`}
+          >
+            {hasApiKey ? 'Oracle Connected' : 'Connect to Oracle'}
+          </button>
           <select value={appState.outputLanguage} onChange={e => setAppState(p => ({...p, outputLanguage: e.target.value}))} className="bg-white/5 border border-white/10 rounded-full px-4 py-1.5 text-[10px] font-bold text-indigo-300 outline-none uppercase tracking-widest cursor-pointer hover:bg-white/10 transition-colors">
             <option value="English">English</option>
             <option value="Gujarati">Gujarati</option>
           </select>
         </div>
+        <p className="mt-4 text-[9px] text-gray-500 uppercase tracking-widest">
+          Ensure you select a API key from a <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" className="underline text-indigo-400">paid Google Cloud project</a> for Pro model access.
+        </p>
       </header>
 
       <div className="flex justify-center mb-12">
