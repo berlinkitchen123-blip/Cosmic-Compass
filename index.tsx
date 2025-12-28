@@ -10,7 +10,6 @@ import {
 import { initializeApp, getApps, getApp } from 'firebase/app';
 // @ts-ignore
 import { getDatabase, ref, set, get } from 'firebase/database';
-import { getDatabase, ref, set, get } from 'firebase/database';
 
 // -----------------------------------------------------------------------------
 // TYPES

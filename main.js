@@ -6,7 +6,7 @@ import {
   User, Milestone, Sparkles, Globe, 
   MessageSquare, History, Zap, Compass, RefreshCw,
   Sun, Moon, Star, Send, Trash2, ArrowLeft,
-  Camera, Eye, Layout, Info, MapPin, Clock, Share2, BookOpen, Settings, X, Key, Search, Cpu
+  Camera, Eye, Layout, Info, MapPin, Clock, Share2, BookOpen, Settings, X, Key, Search, Cpu, ExternalLink
 } from 'lucide-react';
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getDatabase, ref, set, get } from 'firebase/database';
@@ -210,8 +210,16 @@ async function getCombinedReading(
     };
   } catch (error) {
     console.error("Gemini API Error:", error);
-    if (error.message && (error.message.includes("403") || error.message.includes("401"))) {
-        throw new Error("Access Denied (403). Please check your API Key in Settings and ensure it is active.");
+    
+    // Detailed error parsing for better user feedback
+    const errString = error.toString();
+    const message = error.message || errString;
+
+    if (message.includes("403") || message.includes("PERMISSION_DENIED")) {
+        if (message.includes("API_KEY_SERVICE_BLOCKED") || message.includes("consumer")) {
+             throw new Error("Service Blocked: The API Key provided is not enabled for Gemini. \n\nIMPORTANT: Do not use a Firebase Key. Use a key from aistudio.google.com.");
+        }
+        throw new Error("Access Denied (403). Your API Key is invalid or expired. Please update it in Settings.");
     }
     throw error;
   }
@@ -460,7 +468,7 @@ const ChatInterface = ({
               </div>
             )}
             {error && (
-              <div className="mx-auto max-w-sm text-center p-3 bg-red-500/10 border border-red-500/30 text-red-400 text-xs rounded-xl">
+              <div className="mx-auto max-w-sm text-center p-3 bg-red-500/10 border border-red-500/30 text-red-400 text-xs rounded-xl whitespace-pre-line">
                 {error}
               </div>
             )}
@@ -677,8 +685,9 @@ const App = () => {
         } catch (err) { 
         console.error("Chat Error:", err);
         let errorMessage = "Connection lost. Please try again.";
-        if (err.message && (err.message.includes("403") || err.message.includes("401"))) {
-            errorMessage = "Access Denied (403). Your API Key is invalid or has expired. Please check Settings.";
+        const errStr = err.toString();
+        if (errStr.includes("Service Blocked") || errStr.includes("403")) {
+            errorMessage = err.message || "Service Blocked (403). check settings.";
             setShowSettings(true);
         } else if (err.message) {
             errorMessage = err.message;
@@ -736,12 +745,11 @@ const App = () => {
         setReading(res.reading);
         setGroundingSources(res.groundingSources || []);
         } catch (err) {
-        let errorMessage = err.message || "Failed to generate reading.";
-        if (errorMessage.includes("403")) {
-            errorMessage = "Access Denied (403). Check API Key.";
-            setShowSettings(true);
-        }
-        setError(errorMessage);
+            let errorMessage = err.message || "Failed to generate reading.";
+            if (errorMessage.includes("403") || errorMessage.includes("Service Blocked")) {
+                setShowSettings(true);
+            }
+            setError(errorMessage);
         } finally {
         setLoading(false);
         }
@@ -771,15 +779,22 @@ const App = () => {
                     
                     <div className="space-y-6">
                         <div>
-                        <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 block flex items-center gap-2"><Key size={12}/> Gemini API Key</label>
+                        <div className="flex justify-between items-center mb-2">
+                             <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-2"><Key size={12}/> Gemini API Key</label>
+                             <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" className="flex items-center text-[10px] text-indigo-400 hover:text-indigo-300 font-bold transition-colors">
+                                Get API Key <ExternalLink size={10} className="ml-1"/>
+                             </a>
+                        </div>
                         <input 
                             type="password"
                             value={apiKey} 
                             onChange={e => setApiKey(e.target.value)}
-                            placeholder="Paste your Gemini API Key here"
+                            placeholder="Paste your Gemini API Key here (starts with AIza...)"
                             className="w-full bg-black/40 border border-white/10 rounded-xl py-3 px-4 text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 mb-1"
                         />
-                        <p className="text-[9px] text-gray-500">Required for deployment. Your key is stored locally in your browser.</p>
+                        <p className="text-[9px] text-gray-500 leading-relaxed">
+                            <strong>Note:</strong> Do NOT use the Firebase API key found in the source code. It is for database syncing only and is blocked for AI generation. You must create your own free key at Google AI Studio.
+                        </p>
                         </div>
 
                         <div>
