@@ -1,7 +1,7 @@
 
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import ReactDOM from 'react-dom/client';
-import { GoogleGenAI, Chat, GenerateContentResponse } from "@google/genai";
+import { GoogleGenAI } from "@google/genai";
 import { 
   User, Milestone, Sparkles, Globe, 
   MessageSquare, History, Zap, Compass, RefreshCw,
@@ -12,84 +12,26 @@ import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getDatabase, ref, set, get } from 'firebase/database';
 
 // -----------------------------------------------------------------------------
-// TYPES
-// -----------------------------------------------------------------------------
-
-export interface BirthDetails {
-  name: string;
-  dob: string; // YYYY-MM-DD
-  tob: string; // HH:MM
-  pob: string; // Place of Birth (city, country)
-  rashi?: string; 
-}
-
-export interface ReadingOptions {
-  astrology: boolean;
-  numerology: boolean;
-  rashifal: boolean;
-  jyotish: boolean;
-  dailyHoroscope: boolean;
-  palmistry: boolean;
-  lalKitab: boolean;
-  vasthu: boolean;
-  faceReading: boolean;
-}
-
-export interface AdvancedReadingOptions {
-  culturalContext: string; 
-  includeScientificPerspective: boolean;
-}
-
-export interface LifeEvent {
-  description: string;
-  date: string; // YYYY-MM-DD
-  planet?: string; // Associated Graha (Sun, Moon, Mars, etc.)
-}
-
-export interface SpouseDetails {
-  name: string;
-  dob: string; 
-}
-
-export interface Visuals {
-  face?: string;      // Base64 data URI
-  leftHand?: string;  // Base64 data URI
-  rightHand?: string; // Base64 data URI
-  palm?: string;      // For Palmistry
-}
-
-export interface ApiResponse {
-  reading: string;
-  groundingSources?: any[];
-}
-
-export interface ChatMessage {
-  role: 'user' | 'model';
-  text: string;
-}
-
-// -----------------------------------------------------------------------------
 // UTILS
 // -----------------------------------------------------------------------------
 
 const MASTER_STORAGE_KEY = 'cosmic_compass_master_v3';
 const PLANETS = ['Sun', 'Moon', 'Mars', 'Mercury', 'Jupiter', 'Venus', 'Saturn', 'Rahu', 'Ketu'];
 
-const saveStateToLocalStorage = <T,>(key: string, state: T): boolean => {
+const saveStateToLocalStorage = (key, state) => {
   try {
     const serializedState = JSON.stringify(state);
     localStorage.setItem(key, serializedState);
     return true;
-  } catch (error: any) {
+  } catch (error) {
     if (error.name === 'QuotaExceededError' || error.name === 'NS_ERROR_DOM_QUOTA_REACHED') {
       console.warn("LocalStorage quota exceeded. Attempting to save without large visual data...");
       if (typeof state === 'object' && state !== null && 'visuals' in state) {
         try {
-          // @ts-ignore
           const fallbackState = { ...state, visuals: {} };
           localStorage.setItem(key, JSON.stringify(fallbackState));
           return true;
-        } catch (innerError: any) {
+        } catch (innerError) {
           console.error("Critical storage failure:", innerError);
         }
       }
@@ -99,31 +41,17 @@ const saveStateToLocalStorage = <T,>(key: string, state: T): boolean => {
   }
 };
 
-const loadStateFromLocalStorage = <T,>(key: string, defaultValue: T): T => {
+const loadStateFromLocalStorage = (key, defaultValue) => {
   try {
     const serializedState = localStorage.getItem(key);
     if (serializedState === null) {
       return defaultValue;
     }
-    return JSON.parse(serializedState) as T;
+    return JSON.parse(serializedState);
   } catch (error) {
     console.error("Error loading state from localStorage:", error);
     return defaultValue;
   }
-};
-
-// Safe way to check for environment variable without crashing if 'process' is undefined
-const getSafeEnvApiKey = (): string => {
-  try {
-    // @ts-ignore
-    if (typeof process !== 'undefined' && process?.env?.API_KEY) {
-      // @ts-ignore
-      return process.env.API_KEY;
-    }
-  } catch (e) {
-    // Ignore ReferenceError
-  }
-  return '';
 };
 
 // -----------------------------------------------------------------------------
@@ -143,7 +71,7 @@ const firebaseConfig = {
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 const db = getDatabase(app);
 
-const getOrGenerateUserId = (): string => {
+const getOrGenerateUserId = () => {
   let userId = localStorage.getItem('cosmic_user_id');
   if (!userId) {
     userId = 'user_' + Math.random().toString(36).substring(2, 11) + Date.now().toString(36);
@@ -152,7 +80,7 @@ const getOrGenerateUserId = (): string => {
   return userId;
 };
 
-const syncToFirebase = async (userId: string, data: any) => {
+const syncToFirebase = async (userId, data) => {
   try {
     const userRef = ref(db, `users/${userId}`);
     await set(userRef, {
@@ -166,7 +94,7 @@ const syncToFirebase = async (userId: string, data: any) => {
   }
 };
 
-const loadFromFirebase = async (userId: string): Promise<any | null> => {
+const loadFromFirebase = async (userId) => {
   try {
     const userRef = ref(db, `users/${userId}`);
     const snapshot = await get(userRef);
@@ -185,15 +113,15 @@ const loadFromFirebase = async (userId: string): Promise<any | null> => {
 // -----------------------------------------------------------------------------
 
 function buildAstrologyPrompt(
-  birthDetails: BirthDetails,
-  options: ReadingOptions,
-  advancedOptions: AdvancedReadingOptions,
-  lifeEvents: LifeEvent[],
-  outputLanguage: string,
-  exSpouseDetails?: SpouseDetails,
-  visuals?: Visuals,
-  isChatContext: boolean = false
-): string {
+  birthDetails,
+  options,
+  advancedOptions,
+  lifeEvents,
+  outputLanguage,
+  exSpouseDetails,
+  visuals,
+  isChatContext = false
+) {
   const today = new Date();
   const dateString = today.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 
@@ -233,7 +161,7 @@ Format: Markdown. Tone: Visionary.`;
   return prompt;
 }
 
-function getPartFromImage(dataUri: string) {
+function getPartFromImage(dataUri) {
   const [header, data] = dataUri.split(',');
   const mimeType = header.match(/:(.*?);/)?.[1] || 'image/jpeg';
   return {
@@ -245,28 +173,28 @@ function getPartFromImage(dataUri: string) {
 }
 
 async function getCombinedReading(
-  birthDetails: BirthDetails,
-  options: ReadingOptions,
-  advancedOptions: AdvancedReadingOptions,
-  lifeEvents: LifeEvent[],
-  outputLanguage: string,
-  exSpouseDetails: SpouseDetails | undefined,
-  enableGoogleSearch: boolean = false,
-  visuals: Visuals | undefined,
-  apiKey: string,
-  model: string = 'gemini-3-flash-preview'
-): Promise<ApiResponse> {
+  birthDetails,
+  options,
+  advancedOptions,
+  lifeEvents,
+  outputLanguage,
+  exSpouseDetails,
+  enableGoogleSearch = false,
+  visuals,
+  apiKey,
+  model = 'gemini-3-flash-preview'
+) {
   if (!apiKey) throw new Error("API Key is missing. Please add it in Settings.");
   
   const ai = new GoogleGenAI({ apiKey });
   const textPrompt = buildAstrologyPrompt(birthDetails, options, advancedOptions, lifeEvents, outputLanguage, exSpouseDetails, visuals, false);
 
-  const parts: any[] = [{ text: textPrompt }];
+  const parts = [{ text: textPrompt }];
   if (visuals?.face) parts.push(getPartFromImage(visuals.face));
   if (visuals?.palm) parts.push(getPartFromImage(visuals.palm)); 
 
   try {
-    const config: any = { temperature: 0.7 };
+    const config = { temperature: 0.7 };
     if (enableGoogleSearch) {
       config.tools = [{ googleSearch: {} }];
     }
@@ -280,36 +208,36 @@ async function getCombinedReading(
       reading: response.text || "Cosmic signal lost.", 
       groundingSources: response.candidates?.[0]?.groundingMetadata?.groundingChunks || [] 
     };
-  } catch (error: any) {
+  } catch (error) {
     console.error("Gemini API Error:", error);
     throw error;
   }
 }
 
 async function initializeChatSession(
-  birthDetails: BirthDetails,
-  options: ReadingOptions,
-  advancedOptions: AdvancedReadingOptions,
-  lifeEvents: LifeEvent[],
-  outputLanguage: string,
-  history: ChatMessage[] = [],
-  exSpouseDetails: SpouseDetails | undefined,
-  enableGoogleSearch: boolean = false,
-  visuals: Visuals | undefined,
-  apiKey: string,
-  model: string = 'gemini-3-flash-preview'
-): Promise<Chat> {
+  birthDetails,
+  options,
+  advancedOptions,
+  lifeEvents,
+  outputLanguage,
+  history = [],
+  exSpouseDetails,
+  enableGoogleSearch = false,
+  visuals,
+  apiKey,
+  model = 'gemini-3-flash-preview'
+) {
   if (!apiKey) throw new Error("API Key is missing. Please add it in Settings.");
 
   const ai = new GoogleGenAI({ apiKey });
   const systemInstruction = buildAstrologyPrompt(birthDetails, options, advancedOptions, lifeEvents, outputLanguage, exSpouseDetails, visuals, true);
 
-  const geminiHistory: any[] = history.map(msg => ({
+  const geminiHistory = history.map(msg => ({
     role: msg.role === 'user' ? 'user' : 'model',
     parts: [{ text: msg.text }]
   }));
 
-  const config: any = {
+  const config = {
     systemInstruction,
     temperature: 0.8,
   };
@@ -325,11 +253,10 @@ async function initializeChatSession(
   });
 }
 
-async function* sendChatMessage(chatSession: Chat, message: string): AsyncGenerator<string, void, unknown> {
+async function* sendChatMessage(chatSession, message) {
   const responseStream = await chatSession.sendMessageStream({ message });
   for await (const chunk of responseStream) {
-    const c = chunk as GenerateContentResponse;
-    if (c.text) yield c.text;
+    if (chunk.text) yield chunk.text;
   }
 }
 
@@ -337,18 +264,7 @@ async function* sendChatMessage(chatSession: Chat, message: string): AsyncGenera
 // COMPONENTS
 // -----------------------------------------------------------------------------
 
-interface InputFieldProps {
-  label: string;
-  id: string;
-  type: React.HTMLInputTypeAttribute;
-  value: string;
-  onChange: (event: React.ChangeEvent<HTMLInputElement>) => void;
-  placeholder?: string;
-  required?: boolean;
-  min?: string;
-}
-
-const InputField: React.FC<InputFieldProps> = ({
+const InputField = ({
   label,
   id,
   type,
@@ -378,14 +294,7 @@ const InputField: React.FC<InputFieldProps> = ({
   );
 };
 
-interface CheckboxFieldProps {
-  label: string;
-  id: string;
-  checked: boolean;
-  onChange: (event: React.ChangeEvent<HTMLInputElement>) => void;
-}
-
-const CheckboxField: React.FC<CheckboxFieldProps> = ({ label, id, checked, onChange }) => {
+const CheckboxField = ({ label, id, checked, onChange }) => {
   return (
     <label className="flex items-center p-2.5 rounded-xl border border-white/5 hover:bg-white/5 transition-all cursor-pointer">
       <div className="relative flex items-center">
@@ -414,19 +323,7 @@ const CheckboxField: React.FC<CheckboxFieldProps> = ({ label, id, checked, onCha
   );
 };
 
-interface ChatInterfaceProps {
-  chatHistory: ChatMessage[];
-  onSendMessage: (message: string) => void;
-  loading: boolean;
-  error: string | null;
-  onBackToForm: () => void;
-  onClearChat: () => void;
-  suggestedQuestions: string[];
-  isSyncing?: boolean;
-  isFirebaseSynced?: boolean;
-}
-
-const ChatInterface: React.FC<ChatInterfaceProps> = ({
+const ChatInterface = ({
   chatHistory,
   onSendMessage,
   loading,
@@ -437,8 +334,8 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   isSyncing,
   isFirebaseSynced,
 }) => {
-  const [currentInput, setCurrentInput] = useState<string>('');
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [currentInput, setCurrentInput] = useState('');
+  const messagesEndRef = useRef(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -453,7 +350,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
     }
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+  const handleKeyDown = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSend();
@@ -600,20 +497,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
 // MAIN APP COMPONENT
 // -----------------------------------------------------------------------------
 
-interface AppState {
-  birthDetails: BirthDetails;
-  readingOptions: ReadingOptions;
-  advancedReadingOptions: AdvancedReadingOptions;
-  lifeEvents: LifeEvent[];
-  outputLanguage: string;
-  exSpouseDetails?: SpouseDetails;
-  enableGoogleSearch: boolean;
-  chatHistory: ChatMessage[];
-  visuals: Visuals;
-  specialNotes: string;
-}
-
-const DEFAULT_STATE: AppState = {
+const DEFAULT_STATE = {
   birthDetails: { name: 'Harshkumar Panubhai Patel', dob: '1995-01-17', tob: '15:58', pob: 'Vadodara, Gujarat, India', rashi: 'Cancer' },
   readingOptions: { astrology: true, numerology: true, rashifal: true, jyotish: true, dailyHoroscope: true, palmistry: true, lalKitab: true, vasthu: true, faceReading: true },
   advancedReadingOptions: { culturalContext: 'Vedic', includeScientificPerspective: true },
@@ -641,7 +525,7 @@ const DEFAULT_STATE: AppState = {
   specialNotes: 'Active 9-5-1 Willpower Axis'
 };
 
-const App: React.FC = () => {
+const App = () => {
     const [userId] = useState(() => getOrGenerateUserId());
     const [isFirebaseSynced, setIsFirebaseSynced] = useState(false);
     const [isSyncing, setIsSyncing] = useState(false);
@@ -652,30 +536,28 @@ const App: React.FC = () => {
     const [showSettings, setShowSettings] = useState(false);
     const [selectedModel, setSelectedModel] = useState(() => localStorage.getItem('cosmic_selected_model') || 'gemini-3-flash-preview');
     
-    // SAFE API KEY HANDLING for Static Hosts
+    // SAFE API KEY HANDLING (No process.env)
     const [apiKey, setApiKey] = useState(() => {
-        const stored = localStorage.getItem('cosmic_api_key');
-        if (stored) return stored;
-        return getSafeEnvApiKey();
+        return localStorage.getItem('cosmic_api_key') || '';
     });
 
-    const [appState, setAppState] = useState<AppState>(() => {
+    const [appState, setAppState] = useState(() => {
         return loadStateFromLocalStorage(MASTER_STORAGE_KEY, DEFAULT_STATE);
     });
 
     const { birthDetails, readingOptions, advancedReadingOptions, lifeEvents, outputLanguage, exSpouseDetails, enableGoogleSearch, chatHistory, visuals, specialNotes } = appState;
 
-    const [reading, setReading] = useState<string>('');
-    const [groundingSources, setGroundingSources] = useState<any[]>([]);
-    const [loading, setLoading] = useState<boolean>(false);
-    const [error, setError] = useState<string | null>(null);
-    const [isChatMode, setIsChatMode] = useState<boolean>(false);
-    const [currentChatSession, setCurrentChatSession] = useState<Chat | undefined>(undefined);
-    const [chatLoading, setChatLoading] = useState<boolean>(false);
-    const [chatError, setChatError] = useState<string | null>(null);
+    const [reading, setReading] = useState('');
+    const [groundingSources, setGroundingSources] = useState([]);
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState(null);
+    const [isChatMode, setIsChatMode] = useState(false);
+    const [currentChatSession, setCurrentChatSession] = useState(undefined);
+    const [chatLoading, setChatLoading] = useState(false);
+    const [chatError, setChatError] = useState(null);
 
-    const fileInputRef = useRef<HTMLInputElement>(null);
-    const [activeUploadSlot, setActiveUploadSlot] = useState<keyof Visuals | null>(null);
+    const fileInputRef = useRef(null);
+    const [activeUploadSlot, setActiveUploadSlot] = useState(null);
 
     // Recovery effect from cloud
     useEffect(() => {
@@ -701,7 +583,7 @@ const App: React.FC = () => {
         recoverData();
     }, [userId]);
 
-    const triggerSync = useCallback(async (data: AppState) => {
+    const triggerSync = useCallback(async (data) => {
         if (!cloudLockReleased) return false;
         setIsSyncing(true);
         const success = await syncToFirebase(userId, data);
@@ -726,7 +608,7 @@ const App: React.FC = () => {
         setCurrentChatSession(undefined); // Reset chat to use new config
     };
 
-    const handleSendMessage = async (message: string) => {
+    const handleSendMessage = async (message) => {
         let session = currentChatSession;
         if (!session) {
         setChatLoading(true);
@@ -745,18 +627,18 @@ const App: React.FC = () => {
                 selectedModel
             );
             setCurrentChatSession(session);
-        } catch (err: any) { 
+        } catch (err) { 
             setChatError(err.message); 
             setChatLoading(false); 
             return; 
         }
         }
         
-        const newUserMsg: ChatMessage = { role: 'user', text: message };
+        const newUserMsg = { role: 'user', text: message };
         setChatLoading(true);
         
         // Update local state first
-        const updatedHistory = [...chatHistory, newUserMsg, { role: 'model' as const, text: '' }];
+        const updatedHistory = [...chatHistory, newUserMsg, { role: 'model', text: '' }];
         setAppState(prev => ({ ...prev, chatHistory: updatedHistory }));
         
         let fullText = '';
@@ -772,18 +654,18 @@ const App: React.FC = () => {
         }
         
         // Force sync after message completes
-        const finalChatHistory = [...chatHistory, newUserMsg, { role: 'model' as const, text: fullText }];
+        const finalChatHistory = [...chatHistory, newUserMsg, { role: 'model', text: fullText }];
         const finalChatState = { ...appState, chatHistory: finalChatHistory };
         triggerSync(finalChatState);
 
-        } catch (err: any) { 
+        } catch (err) { 
         setChatError(err.message); 
         } finally { 
         setChatLoading(false); 
         }
     };
 
-    const updateAppState = useCallback((updates: Partial<AppState>) => {
+    const updateAppState = useCallback((updates) => {
         setAppState((prev) => ({ ...prev, ...updates }));
         setIsFirebaseSynced(false);
     }, []);
@@ -793,12 +675,12 @@ const App: React.FC = () => {
         updateAppState({ lifeEvents: newEvents });
     };
 
-    const handleRemoveEvent = (index: number) => {
+    const handleRemoveEvent = (index) => {
         const newEvents = lifeEvents.filter((_, i) => i !== index);
         updateAppState({ lifeEvents: newEvents });
     };
 
-    const handleUpdateEvent = (index: number, field: keyof LifeEvent, value: string) => {
+    const handleUpdateEvent = (index, field, value) => {
         const newEvents = [...lifeEvents];
         newEvents[index] = { ...newEvents[index], [field]: value };
         updateAppState({ lifeEvents: newEvents });
@@ -823,19 +705,19 @@ const App: React.FC = () => {
         );
         setReading(res.reading);
         setGroundingSources(res.groundingSources || []);
-        } catch (err: any) {
+        } catch (err) {
         setError(err.message);
         } finally {
         setLoading(false);
         }
     };
 
-    const handleFileUpload = (type: 'face' | 'palm') => (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleFileUpload = (type) => (e) => {
         const file = e.target.files?.[0];
         if (file) {
         const reader = new FileReader();
         reader.onloadend = () => {
-            const newVisuals = { ...visuals, [type]: reader.result as string };
+            const newVisuals = { ...visuals, [type]: reader.result };
             updateAppState({ visuals: newVisuals });
         };
         reader.readAsDataURL(file);
@@ -1103,5 +985,5 @@ const App: React.FC = () => {
 // -----------------------------------------------------------------------------
 // RENDER
 // -----------------------------------------------------------------------------
-const root = ReactDOM.createRoot(document.getElementById('root')!);
+const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(<App />);
