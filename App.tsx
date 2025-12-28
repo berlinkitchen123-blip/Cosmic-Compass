@@ -126,7 +126,18 @@ const App: React.FC = () => {
     if (!session) {
       setChatLoading(true);
       try {
-        session = await initializeChatSession(birthDetails, readingOptions, advancedReadingOptions, lifeEvents, outputLanguage, chatHistory, exSpouseDetails, enableGoogleSearch, visuals);
+        session = await initializeChatSession(
+            birthDetails, 
+            readingOptions, 
+            advancedReadingOptions, 
+            lifeEvents, 
+            outputLanguage, 
+            chatHistory, 
+            exSpouseDetails, 
+            enableGoogleSearch, 
+            visuals,
+            process.env.API_KEY || ''
+        );
         setCurrentChatSession(session);
       } catch (err: any) { 
         setChatError(err.message); 
@@ -192,7 +203,17 @@ const App: React.FC = () => {
     setError(null);
     setGroundingSources([]);
     try {
-      const res = await getCombinedReading(birthDetails, readingOptions, advancedReadingOptions, lifeEvents, outputLanguage, exSpouseDetails, enableGoogleSearch, visuals);
+      const res = await getCombinedReading(
+          birthDetails, 
+          readingOptions, 
+          advancedReadingOptions, 
+          lifeEvents, 
+          outputLanguage, 
+          exSpouseDetails, 
+          enableGoogleSearch, 
+          visuals,
+          process.env.API_KEY || ''
+      );
       setReading(res.reading);
       setGroundingSources(res.groundingSources || []);
     } catch (err: any) {

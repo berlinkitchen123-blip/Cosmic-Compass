@@ -1,4 +1,3 @@
-
 import { GoogleGenAI, Chat, GenerateContentResponse } from "@google/genai";
 import { BirthDetails, ReadingOptions, AdvancedReadingOptions, LifeEvent, SpouseDetails, ApiResponse, Visuals, ChatMessage } from "../types";
 
@@ -68,20 +67,21 @@ function getPartFromImage(dataUri: string) {
   };
 }
 
-// Upgrade to gemini-3-pro-preview for complex reasoning tasks like Navagraha synthesis
-const LATEST_PRO_MODEL = 'gemini-3-pro-preview';
-
 export async function getCombinedReading(
   birthDetails: BirthDetails,
   options: ReadingOptions,
   advancedOptions: AdvancedReadingOptions,
   lifeEvents: LifeEvent[],
   outputLanguage: string,
-  exSpouseDetails?: SpouseDetails,
+  exSpouseDetails: SpouseDetails | undefined,
   enableGoogleSearch: boolean = false,
-  visuals?: Visuals
+  visuals: Visuals | undefined,
+  apiKey: string,
+  model: string = 'gemini-3-flash-preview'
 ): Promise<ApiResponse> {
-  const ai = new GoogleGenAI({apiKey: process.env.API_KEY});
+  if (!apiKey) throw new Error("API Key is missing. Please check your settings.");
+  
+  const ai = new GoogleGenAI({ apiKey });
   const textPrompt = buildAstrologyPrompt(birthDetails, options, advancedOptions, lifeEvents, outputLanguage, exSpouseDetails, visuals, false);
 
   const parts: any[] = [{ text: textPrompt }];
@@ -90,13 +90,15 @@ export async function getCombinedReading(
   if (visuals?.rightHand) parts.push(getPartFromImage(visuals.rightHand));
 
   try {
+    const config: any = { temperature: 0.7 };
+    if (enableGoogleSearch) {
+      config.tools = [{ googleSearch: {} }];
+    }
+
     const response = await ai.models.generateContent({
-      model: LATEST_PRO_MODEL,
+      model: model,
       contents: { parts },
-      config: { 
-        temperature: 0.7, 
-        tools: enableGoogleSearch ? [{ googleSearch: {} }] : undefined
-      },
+      config: config,
     });
     return { 
       reading: response.text || "Cosmic signal lost.", 
@@ -115,11 +117,15 @@ export async function initializeChatSession(
   lifeEvents: LifeEvent[],
   outputLanguage: string,
   history: ChatMessage[] = [],
-  exSpouseDetails?: SpouseDetails,
+  exSpouseDetails: SpouseDetails | undefined,
   enableGoogleSearch: boolean = false,
-  visuals?: Visuals
+  visuals: Visuals | undefined,
+  apiKey: string,
+  model: string = 'gemini-3-flash-preview'
 ): Promise<Chat> {
-  const ai = new GoogleGenAI({apiKey: process.env.API_KEY});
+  if (!apiKey) throw new Error("API Key is missing. Please check your settings.");
+
+  const ai = new GoogleGenAI({ apiKey });
   const systemInstruction = buildAstrologyPrompt(birthDetails, options, advancedOptions, lifeEvents, outputLanguage, exSpouseDetails, visuals, true);
 
   const geminiHistory: any[] = history.map(msg => ({
@@ -127,14 +133,19 @@ export async function initializeChatSession(
     parts: [{ text: msg.text }]
   }));
 
+  const config: any = {
+    systemInstruction,
+    temperature: 0.8,
+  };
+  
+  if (enableGoogleSearch) {
+    config.tools = [{ googleSearch: {} }];
+  }
+
   return ai.chats.create({
-    model: LATEST_PRO_MODEL,
+    model: model,
     history: geminiHistory,
-    config: {
-      systemInstruction,
-      temperature: 0.8,
-      tools: enableGoogleSearch ? [{ googleSearch: {} }] : undefined
-    },
+    config: config,
   });
 }
 
