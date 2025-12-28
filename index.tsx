@@ -1,4 +1,3 @@
-
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import ReactDOM from 'react-dom/client';
 import { GoogleGenAI, Chat, GenerateContentResponse } from "@google/genai";
@@ -9,6 +8,8 @@ import {
   Camera, Eye, Layout, Info, MapPin, Clock, Share2, BookOpen, Settings, X, Key, Search, Cpu
 } from 'lucide-react';
 import { initializeApp, getApps, getApp } from 'firebase/app';
+// @ts-ignore
+import { getDatabase, ref, set, get } from 'firebase/database';
 import { getDatabase, ref, set, get } from 'firebase/database';
 
 // -----------------------------------------------------------------------------

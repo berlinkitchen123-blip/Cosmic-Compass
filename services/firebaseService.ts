@@ -1,6 +1,7 @@
 
 // services/firebaseService.ts
 import { initializeApp, getApps, getApp } from 'firebase/app';
+// @ts-ignore
 import { getDatabase, ref, set, get } from 'firebase/database';
 
 const firebaseConfig = {

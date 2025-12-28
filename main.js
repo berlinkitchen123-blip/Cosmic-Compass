@@ -184,9 +184,9 @@ async function getCombinedReading(
   apiKey,
   model = 'gemini-3-flash-preview'
 ) {
-  if (!apiKey) throw new Error("API Key is missing. Please add it in Settings.");
+  if (!apiKey || !apiKey.trim()) throw new Error("API Key is missing. Please add it in Settings.");
   
-  const ai = new GoogleGenAI({ apiKey });
+  const ai = new GoogleGenAI({ apiKey: apiKey.trim() });
   const textPrompt = buildAstrologyPrompt(birthDetails, options, advancedOptions, lifeEvents, outputLanguage, exSpouseDetails, visuals, false);
 
   const parts = [{ text: textPrompt }];
@@ -210,6 +210,9 @@ async function getCombinedReading(
     };
   } catch (error) {
     console.error("Gemini API Error:", error);
+    if (error.message && (error.message.includes("403") || error.message.includes("401"))) {
+        throw new Error("Access Denied (403). Please check your API Key in Settings and ensure it is active.");
+    }
     throw error;
   }
 }
@@ -227,9 +230,9 @@ async function initializeChatSession(
   apiKey,
   model = 'gemini-3-flash-preview'
 ) {
-  if (!apiKey) throw new Error("API Key is missing. Please add it in Settings.");
+  if (!apiKey || !apiKey.trim()) throw new Error("API Key is missing. Please add it in Settings.");
 
-  const ai = new GoogleGenAI({ apiKey });
+  const ai = new GoogleGenAI({ apiKey: apiKey.trim() });
   const systemInstruction = buildAstrologyPrompt(birthDetails, options, advancedOptions, lifeEvents, outputLanguage, exSpouseDetails, visuals, true);
 
   const geminiHistory = history.map(msg => ({
@@ -602,13 +605,21 @@ const App = () => {
     }, [appState, triggerSync, cloudLockReleased]);
 
     const saveSettings = () => {
+        const trimmedKey = apiKey.trim();
+        setApiKey(trimmedKey);
         localStorage.setItem('cosmic_selected_model', selectedModel);
-        localStorage.setItem('cosmic_api_key', apiKey); // Persist API key
+        localStorage.setItem('cosmic_api_key', trimmedKey); // Persist API key
         setShowSettings(false);
         setCurrentChatSession(undefined); // Reset chat to use new config
     };
 
     const handleSendMessage = async (message) => {
+        if (!apiKey || !apiKey.trim()) {
+            setShowSettings(true);
+            setChatError("Please enter your Gemini API Key in Settings to chat.");
+            return;
+        }
+
         let session = currentChatSession;
         if (!session) {
         setChatLoading(true);
@@ -630,12 +641,17 @@ const App = () => {
         } catch (err) { 
             setChatError(err.message); 
             setChatLoading(false); 
+            // If the error implies missing key, open settings
+            if (err.message && (err.message.includes("API Key") || err.message.includes("403"))) {
+                setShowSettings(true);
+            }
             return; 
         }
         }
         
         const newUserMsg = { role: 'user', text: message };
         setChatLoading(true);
+        setChatError(null);
         
         // Update local state first
         const updatedHistory = [...chatHistory, newUserMsg, { role: 'model', text: '' }];
@@ -659,7 +675,15 @@ const App = () => {
         triggerSync(finalChatState);
 
         } catch (err) { 
-        setChatError(err.message); 
+        console.error("Chat Error:", err);
+        let errorMessage = "Connection lost. Please try again.";
+        if (err.message && (err.message.includes("403") || err.message.includes("401"))) {
+            errorMessage = "Access Denied (403). Your API Key is invalid or has expired. Please check Settings.";
+            setShowSettings(true);
+        } else if (err.message) {
+            errorMessage = err.message;
+        }
+        setChatError(errorMessage); 
         } finally { 
         setChatLoading(false); 
         }
@@ -687,6 +711,12 @@ const App = () => {
     };
 
     const handleGenerateReading = async () => {
+        if (!apiKey || !apiKey.trim()) {
+            setShowSettings(true);
+            setError("Please enter your Gemini API Key in Settings to generate a reading.");
+            return;
+        }
+
         setLoading(true);
         setError(null);
         setGroundingSources([]);
@@ -706,7 +736,12 @@ const App = () => {
         setReading(res.reading);
         setGroundingSources(res.groundingSources || []);
         } catch (err) {
-        setError(err.message);
+        let errorMessage = err.message || "Failed to generate reading.";
+        if (errorMessage.includes("403")) {
+            errorMessage = "Access Denied (403). Check API Key.";
+            setShowSettings(true);
+        }
+        setError(errorMessage);
         } finally {
         setLoading(false);
         }
