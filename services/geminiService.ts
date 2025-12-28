@@ -1,3 +1,4 @@
+
 import { GoogleGenAI, Chat, GenerateContentResponse } from "@google/genai";
 import { BirthDetails, ReadingOptions, AdvancedReadingOptions, LifeEvent, SpouseDetails, ApiResponse, Visuals, ChatMessage } from "../types";
 
@@ -88,6 +89,7 @@ export async function getCombinedReading(
   if (visuals?.face) parts.push(getPartFromImage(visuals.face));
   if (visuals?.leftHand) parts.push(getPartFromImage(visuals.leftHand));
   if (visuals?.rightHand) parts.push(getPartFromImage(visuals.rightHand));
+  if (visuals?.palm) parts.push(getPartFromImage(visuals.palm));
 
   try {
     const config: any = { temperature: 0.7 };

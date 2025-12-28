@@ -112,6 +112,16 @@ const loadStateFromLocalStorage = <T,>(key: string, defaultValue: T): T => {
   }
 };
 
+// Helper to safely get env var without crashing in browser
+const getSafeEnvApiKey = (): string => {
+  try {
+    // @ts-ignore
+    return typeof process !== 'undefined' && process.env && process.env.API_KEY ? process.env.API_KEY : '';
+  } catch {
+    return '';
+  }
+};
+
 // -----------------------------------------------------------------------------
 // FIREBASE SERVICE
 // -----------------------------------------------------------------------------
@@ -242,7 +252,7 @@ async function getCombinedReading(
   apiKey: string,
   model: string = 'gemini-3-flash-preview'
 ): Promise<ApiResponse> {
-  if (!apiKey) throw new Error("API Key is missing. Please check your settings.");
+  if (!apiKey) throw new Error("API Key is missing. Please add it in Settings.");
   
   const ai = new GoogleGenAI({ apiKey });
   const textPrompt = buildAstrologyPrompt(birthDetails, options, advancedOptions, lifeEvents, outputLanguage, exSpouseDetails, visuals, false);
@@ -285,7 +295,7 @@ async function initializeChatSession(
   apiKey: string,
   model: string = 'gemini-3-flash-preview'
 ): Promise<Chat> {
-  if (!apiKey) throw new Error("API Key is missing. Please check your settings.");
+  if (!apiKey) throw new Error("API Key is missing. Please add it in Settings.");
 
   const ai = new GoogleGenAI({ apiKey });
   const systemInstruction = buildAstrologyPrompt(birthDetails, options, advancedOptions, lifeEvents, outputLanguage, exSpouseDetails, visuals, true);
@@ -637,6 +647,13 @@ const App: React.FC = () => {
     // Settings State
     const [showSettings, setShowSettings] = useState(false);
     const [selectedModel, setSelectedModel] = useState(() => localStorage.getItem('cosmic_selected_model') || 'gemini-3-flash-preview');
+    
+    // SAFE API KEY HANDLING for Static Hosts
+    const [apiKey, setApiKey] = useState(() => {
+        const stored = localStorage.getItem('cosmic_api_key');
+        if (stored) return stored;
+        return getSafeEnvApiKey();
+    });
 
     const [appState, setAppState] = useState<AppState>(() => {
         return loadStateFromLocalStorage(MASTER_STORAGE_KEY, DEFAULT_STATE);
@@ -700,8 +717,9 @@ const App: React.FC = () => {
 
     const saveSettings = () => {
         localStorage.setItem('cosmic_selected_model', selectedModel);
+        localStorage.setItem('cosmic_api_key', apiKey); // Persist API key
         setShowSettings(false);
-        setCurrentChatSession(undefined); // Reset chat
+        setCurrentChatSession(undefined); // Reset chat to use new config
     };
 
     const handleSendMessage = async (message: string) => {
@@ -719,7 +737,7 @@ const App: React.FC = () => {
                 exSpouseDetails, 
                 enableGoogleSearch, 
                 visuals,
-                process.env.API_KEY || '',
+                apiKey,
                 selectedModel
             );
             setCurrentChatSession(session);
@@ -796,7 +814,7 @@ const App: React.FC = () => {
             exSpouseDetails, 
             enableGoogleSearch, 
             visuals,
-            process.env.API_KEY || '',
+            apiKey,
             selectedModel
         );
         setReading(res.reading);
@@ -831,6 +849,18 @@ const App: React.FC = () => {
                     <h3 className="text-xl font-serif text-white mb-6 flex items-center gap-2"><Settings size={20} className="text-indigo-400"/> Oracle Configuration</h3>
                     
                     <div className="space-y-6">
+                        <div>
+                        <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 block flex items-center gap-2"><Key size={12}/> Gemini API Key</label>
+                        <input 
+                            type="password"
+                            value={apiKey} 
+                            onChange={e => setApiKey(e.target.value)}
+                            placeholder="Paste your Gemini API Key here"
+                            className="w-full bg-black/40 border border-white/10 rounded-xl py-3 px-4 text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 mb-1"
+                        />
+                        <p className="text-[9px] text-gray-500">Required for deployment. Your key is stored locally in your browser.</p>
+                        </div>
+
                         <div>
                         <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 block flex items-center gap-2"><Cpu size={12}/> Intelligence Model</label>
                         <select 

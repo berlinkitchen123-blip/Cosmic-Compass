@@ -39,6 +39,7 @@ export interface Visuals {
   face?: string;      // Base64 data URI
   leftHand?: string;  // Base64 data URI
   rightHand?: string; // Base64 data URI
+  palm?: string;      // For Palmistry
 }
 
 export interface ApiResponse {
