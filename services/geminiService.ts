@@ -98,42 +98,39 @@ export async function getCombinedReading(
   visuals: Visuals | undefined,
   frontierParams: any,
   apiKey: string,
-  model: string = 'gemini-1.5-flash'
-): Promise<ApiResponse> {
-  if (!apiKey) throw new Error("API Key is missing. Please check your settings.");
+  const genAI = new GoogleGenAI(apiKey.trim());
+  const modelInstance = genAI.getGenerativeModel({
+    model: model,
+    tools: enableGoogleSearch ? [{ googleSearch: {} }] : []
+  });
 
-  const ai = new GoogleGenAI({ apiKey });
   const textPrompt = buildAstrologyPrompt(birthDetails, options, advancedOptions, lifeEvents, outputLanguage, exSpouseDetails, visuals, frontierParams, false);
 
   const parts: any[] = [{ text: textPrompt }];
   if (visuals?.face) parts.push(getPartFromImage(visuals.face));
-  if (visuals?.leftHand) parts.push(getPartFromImage(visuals.leftHand));
-  if (visuals?.rightHand) parts.push(getPartFromImage(visuals.rightHand));
-  if (visuals?.palm) parts.push(getPartFromImage(visuals.palm));
+if (visuals?.leftHand) parts.push(getPartFromImage(visuals.leftHand));
+if (visuals?.rightHand) parts.push(getPartFromImage(visuals.rightHand));
+if (visuals?.palm) parts.push(getPartFromImage(visuals.palm));
 
-  try {
-    const config: any = { temperature: 0.7 };
-    if (enableGoogleSearch) {
-      config.tools = [{ googleSearch: {} }];
-    }
+try {
+  const result = await modelInstance.generateContent({
+    contents: [{ role: 'user', parts }],
+    generationConfig: { temperature: 0.7 },
+  });
 
-    const response = await ai.models.generateContent({
-      model: model,
-      contents: [{ parts }],
-      config: config,
-    });
-    return {
-      reading: response.text || "Cosmic signal lost.",
-      groundingSources: response.candidates?.[0]?.groundingMetadata?.groundingChunks || []
-    };
-  } catch (error: any) {
-    console.error("Gemini API Error:", error);
-    const errString = error.toString();
-    if (errString.includes("403") || errString.includes("PERMISSION_DENIED")) {
-      throw new Error("Access Denied (403): Your Gemini API Key is invalid or not enabled. Ensure you are using a key from aistudio.google.com, not your Firebase API key.");
-    }
-    throw error;
+  const response = result.response;
+  return {
+    reading: response.text() || "Cosmic signal lost.",
+    groundingSources: response.candidates?.[0]?.groundingMetadata?.groundingChunks || []
+  };
+} catch (error: any) {
+  console.error("Gemini API Error:", error);
+  const errString = error.toString();
+  if (errString.includes("403") || errString.includes("PERMISSION_DENIED")) {
+    throw new Error("Access Denied (403): Your Gemini API Key is invalid or not enabled. Ensure you are using a key from aistudio.google.com, not your Firebase API key.");
   }
+  throw error;
+}
 }
 
 export async function initializeChatSession(
@@ -148,11 +145,7 @@ export async function initializeChatSession(
   visuals: Visuals | undefined,
   frontierParams: any,
   apiKey: string,
-  model: string = 'gemini-1.5-flash'
-): Promise<Chat> {
-  if (!apiKey) throw new Error("API Key is missing. Please check your settings.");
-
-  const ai = new GoogleGenAI({ apiKey });
+  const genAI = new GoogleGenAI(apiKey.trim());
   const systemInstruction = buildAstrologyPrompt(birthDetails, options, advancedOptions, lifeEvents, outputLanguage, exSpouseDetails, visuals, frontierParams, true);
 
   const geminiHistory: any[] = history.map(msg => ({
@@ -160,19 +153,15 @@ export async function initializeChatSession(
     parts: [{ text: msg.text }]
   }));
 
-  const config: any = {
-    systemInstruction,
-    temperature: 0.8,
-  };
-
-  if (enableGoogleSearch) {
-    config.tools = [{ googleSearch: {} }];
-  }
-
-  return ai.chats.create({
+  const modelInstance = genAI.getGenerativeModel({
     model: model,
+    systemInstruction,
+    tools: enableGoogleSearch ? [{ googleSearch: {} }] : []
+  });
+
+  return modelInstance.startChat({
     history: geminiHistory,
-    config: config,
+    generationConfig: { temperature: 0.8 },
   });
 }
 

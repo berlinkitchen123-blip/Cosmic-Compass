@@ -244,7 +244,12 @@ async function getCombinedReading(
 ) {
   if (!apiKey || !apiKey.trim()) throw new Error("API Key is missing. Please add it in Settings.");
 
-  const ai = new GoogleGenAI({ apiKey: apiKey.trim() });
+  const genAI = new GoogleGenAI(apiKey.trim());
+  const modelInstance = genAI.getGenerativeModel({
+    model: model,
+    tools: enableGoogleSearch ? [{ googleSearch: {} }] : []
+  });
+
   const textPrompt = buildAstrologyPrompt(birthDetails, options, advancedOptions, lifeEvents, outputLanguage, exSpouseDetails, visuals, frontierParams, false);
 
   const parts = [{ text: textPrompt }];
@@ -252,18 +257,14 @@ async function getCombinedReading(
   if (visuals?.palm) parts.push(getPartFromImage(visuals.palm));
 
   try {
-    const config = { temperature: 0.7 };
-    if (enableGoogleSearch) {
-      config.tools = [{ googleSearch: {} }];
-    }
-
-    const response = await ai.models.generateContent({
-      model: model,
-      contents: [{ parts }],
-      config: config,
+    const result = await modelInstance.generateContent({
+      contents: [{ role: 'user', parts }],
+      generationConfig: { temperature: 0.7 }
     });
+
+    const response = result.response;
     return {
-      reading: response.text || "Cosmic signal lost.",
+      reading: response.text() || "Cosmic signal lost.",
       groundingSources: response.candidates?.[0]?.groundingMetadata?.groundingChunks || []
     };
   } catch (error) {
@@ -307,7 +308,7 @@ async function initializeChatSession(
 ) {
   if (!apiKey || !apiKey.trim()) throw new Error("API Key is missing. Please add it in Settings.");
 
-  const ai = new GoogleGenAI({ apiKey: apiKey.trim() });
+  const genAI = new GoogleGenAI(apiKey.trim());
   const systemInstruction = buildAstrologyPrompt(birthDetails, options, advancedOptions, lifeEvents, outputLanguage, exSpouseDetails, visuals, frontierParams, true);
 
   const geminiHistory = history.map(msg => ({
@@ -315,19 +316,15 @@ async function initializeChatSession(
     parts: [{ text: msg.text }]
   }));
 
-  const config = {
-    systemInstruction,
-    temperature: 0.8,
-  };
-
-  if (enableGoogleSearch) {
-    config.tools = [{ googleSearch: {} }];
-  }
-
-  return ai.chats.create({
+  const modelInstance = genAI.getGenerativeModel({
     model: model,
+    systemInstruction,
+    tools: enableGoogleSearch ? [{ googleSearch: {} }] : []
+  });
+
+  return modelInstance.startChat({
     history: geminiHistory,
-    config: config,
+    generationConfig: { temperature: 0.8 }
   });
 }
 
