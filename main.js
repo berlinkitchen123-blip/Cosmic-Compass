@@ -105,12 +105,13 @@ const getSafeEnvApiKey = () => {
 // -----------------------------------------------------------------------------
 
 const firebaseConfig = {
-  apiKey: "AIzaSyD36DpN2xIGnGhIAXOGTNNjX5ic0XKAc0M",
-  authDomain: "cosmic-compass-c381e.firebaseapp.com",
-  projectId: "cosmic-compass-c381e",
-  storageBucket: "cosmic-compass-c381e.firebasestorage.app",
-  messagingSenderId: "128465536584",
-  appId: "1:128465536584:web:ff7d978f8abf43dff67a7d"
+  apiKey: "AIzaSyDrFjYv2c322zzCMsgpVttjUz9lWDrBoUg",
+  authDomain: "cosmic-compass-5fd5e.firebaseapp.com",
+  databaseURL: "https://cosmic-compass-5fd5e-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId: "cosmic-compass-5fd5e",
+  storageBucket: "cosmic-compass-5fd5e.firebasestorage.app",
+  messagingSenderId: "160679439170",
+  appId: "1:160679439170:web:bafbb80eb30f64ee9476db"
 };
 
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
