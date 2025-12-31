@@ -3,7 +3,16 @@ import { GoogleGenAI, Chat, GenerateContentResponse } from "@google/genai";
 import { BirthDetails, ReadingOptions, AdvancedReadingOptions, LifeEvent, SpouseDetails, ApiResponse, Visuals, ChatMessage } from "../types";
 
 /**
- * Builds a highly specific prompt for Navagraha (9 Planets) and 9-5-1 Willpower Axis analysis.
+ * Loshu Grid Logic
+ */
+const getLoshuGrid = (dob: string) => {
+  if (!dob) return [];
+  const digits = dob.replace(/[^0-9]/g, '').split('').map(Number);
+  return Array.from(new Set(digits.filter(d => d > 0)));
+};
+
+/**
+ * Builds a highly specific prompt for Navagraha (9 Planets), Loshu Grid, and Advanced Scientific Synthesis.
  */
 function buildAstrologyPrompt(
   birthDetails: BirthDetails,
@@ -13,43 +22,53 @@ function buildAstrologyPrompt(
   outputLanguage: string,
   exSpouseDetails?: SpouseDetails,
   visuals?: Visuals,
+  frontierParams?: any,
   isChatContext: boolean = false
 ): string {
   const today = new Date();
   const dateString = today.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+  const activeNums = getLoshuGrid(birthDetails.dob);
 
-  let prompt = isChatContext 
-    ? `You are the "Siddhanta Oracle". You analyze the 9 Planets (Navagraha) and the 9-5-1 Willpower Axis (Mars-Mercury-Sun) as found in charts of leaders like Narendra Modi. You have no limits on time—project into 2030, 2040, and 2050.`
-    : `Generate a Full Navagraha Synthesis & Willpower Analysis. Date: ${dateString}.`;
+  let prompt = isChatContext
+    ? `You are the "Unified Reality Oracle". You synthesize ancient Navagraha (9 Planets) wisdom with modern Frontier Science (Astrophysics, Quantum Mechanics, and Epigenetics).`
+    : `Generate a Unified Frontier Synthesis. Hybridizing Navagraha Mythology with NASA JPL Orbital Mechanics. Date: ${dateString}.`;
 
   if (outputLanguage === 'Gujarati') {
-    prompt += ` Respond ONLY in Gujarati. Use high-level Vedic vocabulary.`;
+    prompt += ` Respond ONLY in Gujarati using advanced technical and Vedic vocabulary.`;
   } else {
-    prompt += ` Respond in English. Use a mystical yet professional tone.`;
+    prompt += ` Respond in English. Use a "Techno-Mystical" tone—integrating scientific terminology with spiritual insight.`;
   }
 
-  prompt += `\n\nCORE SUBJECT:
+  prompt += `\n\nCORE SUBJECT DATASET:
 - Name: ${birthDetails.name}
-- Birth: ${birthDetails.dob} at ${birthDetails.tob} in ${birthDetails.pob}
-- Rashi: ${birthDetails.rashi || 'Calculate'}
+- Temporal Node: ${birthDetails.dob} @ ${birthDetails.tob}
+- Geolocation: ${birthDetails.pob}
+- Frontier Bio-Parameters: ${frontierParams ? JSON.stringify(frontierParams) : 'Default (Standard Human)'}
+- Rashi/Luna-Lunar Node: ${birthDetails.rashi || 'Auto-Calculate'}
 
-THE 9-5-1 WILLPOWER LINE (NUMEROLOGY):
-- This subject has a 9-5-1 structure. 9 (Mars - Action), 5 (Mercury - Intellect), 1 (Sun - Soul/Power). This is the "Willpower Line" of top achievers. Analyze the resilience and manifestation power of this axis.
+SCIENTIFIC & TECHNICAL OVERLAYS:
+1. **Orbital Mechanics (NASA JPL Reference)**: Correlate the positions of the 9 Grahas with actual astronomical coordinates. Analyze the gravitational tidal forces at the moment of the temporal node.
+2. **Neutrino Flux Analysis**: Analyze how solar and cosmic neutrino streams interacted with the biological system during gestation and at the moment of birth.
+3. **Geomagnetic Resonance**: Cross-reference the birth location (${birthDetails.pob}) with Earth's Magnetic Field (Schumann Resonance) and the K-index (Geomagnetic Storm activity) for that period.
+4. **Epigenetic Signaling**: Analyze how the environmental conditions of the birth location influenced the initial epigenetic methylation patterns of the subject.
+5. **Quantum Wavefunction**: Treat the subject's life events as a collapsed wavefunction from a field of infinite probability.
 
-NAVAGRAHA MAPPING (9 PLANETS):
-Analyze the interaction of these 9 Graha nodes from the subject's timeline:
-${lifeEvents.map(e => `- ${e.planet || 'Unspecified Graha'} Node (${e.date}): ${e.description}`).join('\n')}
+NUMEROLOGY (LOSHU GRID - 3x3 MATRIX):
+- Active Vibrations: ${activeNums.join(', ')}
+${activeNums.includes(9) && activeNums.includes(5) && activeNums.includes(1)
+      ? "- 9-5-1 WILLPOWER VECTOR: Extreme manifestation potential detected. This is a high-energy kinetic axis."
+      : "- Analyze available digits as sub-quantum resonance points in the subject's energetic field."}
 
-TEMPORAL PROJECTION:
-- Do not restrict analysis to the current year. Provide a roadmap for 2030, 2040, and 2050 based on Shani (Saturn) and Guru (Jupiter) transits.
+NAVAGRAHA TEMPORAL MAPPING:
+Analyze these 9 planetary nodes as significant perturbations in the subject's timeline:
+${lifeEvents.map(e => `- ${e.planet || 'Unknown Graha'} Perturbation (${e.date}): ${e.description}`).join('\n')}
 
-REQUIREMENTS:
-1. **Navagraha Synthesis**: Deep dive into all 9 planets.
-2. **Willpower Analysis**: Specific section on the 9-5-1 combination.
-3. **Decadal Roadmap**: Future peaks in 2030, 2040, 2050.
-4. **Remedies**: For afflicted grahas among the 9.
+OUTPUT REQUIREMENTS:
+- **Technical Synthesis**: Use terms like "Synaptic Plasticity", "Stellar Nucleosynthesis", "Quantum Entanglement", and "Karmic Feedback Loops".
+- **Decadal Projection**: Roadmap for 2030, 2040, and 2050 based on Shani (Saturn) and Guru (Jupiter) orbital cycles.
+- **Grounding**: If Google Search is enabled, find actual space weather data or NASA news for the subject's current phase.
 
-Format: Markdown. Tone: Visionary.`;
+Format: Advanced Markdown with technical headers. Tone: Visionary, Precise, and Scientific.`;
 
   return prompt;
 }
@@ -77,13 +96,14 @@ export async function getCombinedReading(
   exSpouseDetails: SpouseDetails | undefined,
   enableGoogleSearch: boolean = false,
   visuals: Visuals | undefined,
+  frontierParams: any,
   apiKey: string,
-  model: string = 'gemini-3-flash-preview'
+  model: string = 'gemini-1.5-flash'
 ): Promise<ApiResponse> {
   if (!apiKey) throw new Error("API Key is missing. Please check your settings.");
-  
+
   const ai = new GoogleGenAI({ apiKey });
-  const textPrompt = buildAstrologyPrompt(birthDetails, options, advancedOptions, lifeEvents, outputLanguage, exSpouseDetails, visuals, false);
+  const textPrompt = buildAstrologyPrompt(birthDetails, options, advancedOptions, lifeEvents, outputLanguage, exSpouseDetails, visuals, frontierParams, false);
 
   const parts: any[] = [{ text: textPrompt }];
   if (visuals?.face) parts.push(getPartFromImage(visuals.face));
@@ -99,15 +119,19 @@ export async function getCombinedReading(
 
     const response = await ai.models.generateContent({
       model: model,
-      contents: { parts },
+      contents: [{ parts }],
       config: config,
     });
-    return { 
-      reading: response.text || "Cosmic signal lost.", 
-      groundingSources: response.candidates?.[0]?.groundingMetadata?.groundingChunks || [] 
+    return {
+      reading: response.text || "Cosmic signal lost.",
+      groundingSources: response.candidates?.[0]?.groundingMetadata?.groundingChunks || []
     };
   } catch (error: any) {
     console.error("Gemini API Error:", error);
+    const errString = error.toString();
+    if (errString.includes("403") || errString.includes("PERMISSION_DENIED")) {
+      throw new Error("Access Denied (403): Your Gemini API Key is invalid or not enabled. Ensure you are using a key from aistudio.google.com, not your Firebase API key.");
+    }
     throw error;
   }
 }
@@ -122,13 +146,14 @@ export async function initializeChatSession(
   exSpouseDetails: SpouseDetails | undefined,
   enableGoogleSearch: boolean = false,
   visuals: Visuals | undefined,
+  frontierParams: any,
   apiKey: string,
-  model: string = 'gemini-3-flash-preview'
+  model: string = 'gemini-1.5-flash'
 ): Promise<Chat> {
   if (!apiKey) throw new Error("API Key is missing. Please check your settings.");
 
   const ai = new GoogleGenAI({ apiKey });
-  const systemInstruction = buildAstrologyPrompt(birthDetails, options, advancedOptions, lifeEvents, outputLanguage, exSpouseDetails, visuals, true);
+  const systemInstruction = buildAstrologyPrompt(birthDetails, options, advancedOptions, lifeEvents, outputLanguage, exSpouseDetails, visuals, frontierParams, true);
 
   const geminiHistory: any[] = history.map(msg => ({
     role: msg.role === 'user' ? 'user' : 'model',
@@ -139,7 +164,7 @@ export async function initializeChatSession(
     systemInstruction,
     temperature: 0.8,
   };
-  
+
   if (enableGoogleSearch) {
     config.tools = [{ googleSearch: {} }];
   }

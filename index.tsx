@@ -1,8 +1,8 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import ReactDOM from 'react-dom/client';
 import { GoogleGenAI, Chat, GenerateContentResponse } from "@google/genai";
-import { 
-  User, Milestone, Sparkles, Globe, 
+import {
+  User, Milestone, Sparkles, Globe,
   MessageSquare, History, Zap, Compass, RefreshCw,
   Sun, Moon, Star, Send, Trash2, ArrowLeft,
   Camera, Eye, Layout, Info, MapPin, Clock, Share2, BookOpen, Settings, X, Key, Search, Cpu
@@ -20,7 +20,7 @@ export interface BirthDetails {
   dob: string; // YYYY-MM-DD
   tob: string; // HH:MM
   pob: string; // Place of Birth (city, country)
-  rashi?: string; 
+  rashi?: string;
 }
 
 export interface ReadingOptions {
@@ -36,7 +36,7 @@ export interface ReadingOptions {
 }
 
 export interface AdvancedReadingOptions {
-  culturalContext: string; 
+  culturalContext: string;
   includeScientificPerspective: boolean;
 }
 
@@ -48,7 +48,7 @@ export interface LifeEvent {
 
 export interface SpouseDetails {
   name: string;
-  dob: string; 
+  dob: string;
 }
 
 export interface Visuals {
@@ -74,6 +74,14 @@ export interface ChatMessage {
 
 const MASTER_STORAGE_KEY = 'cosmic_compass_master_v3';
 const PLANETS = ['Sun', 'Moon', 'Mars', 'Mercury', 'Jupiter', 'Venus', 'Saturn', 'Rahu', 'Ketu'];
+
+// --- LOSHU GRID LOGIC ---
+const getLoshuGrid = (dob: string) => {
+  if (!dob) return [];
+  const digits = dob.replace(/[^0-9]/g, '').split('').map(Number);
+  // Loshu Grid positions: 4 9 2 / 3 5 7 / 8 1 6
+  return Array.from(new Set(digits.filter(d => d > 0)));
+};
 
 const saveStateToLocalStorage = <T,>(key: string, state: T): boolean => {
   try {
@@ -116,9 +124,14 @@ const loadStateFromLocalStorage = <T,>(key: string, defaultValue: T): T => {
 const getSafeEnvApiKey = (): string => {
   try {
     // @ts-ignore
-    if (typeof process !== 'undefined' && process?.env?.API_KEY) {
+    const env = import.meta.env || {};
+    if (env.VITE_GEMINI_API_KEY) return env.VITE_GEMINI_API_KEY;
+    if (env.GEMINI_API_KEY) return env.GEMINI_API_KEY;
+
+    // @ts-ignore
+    if (typeof process !== 'undefined' && process?.env) {
       // @ts-ignore
-      return process.env.API_KEY;
+      return process.env.VITE_GEMINI_API_KEY || process.env.GEMINI_API_KEY || process.env.API_KEY || '';
     }
   } catch (e) {
     // Ignore ReferenceError
@@ -131,13 +144,12 @@ const getSafeEnvApiKey = (): string => {
 // -----------------------------------------------------------------------------
 
 const firebaseConfig = {
-  apiKey: "AIzaSyDrFjYv2c322zzCMsgpVttjUz9lWDrBoUg",
-  authDomain: "cosmic-compass-5fd5e.firebaseapp.com",
-  databaseURL: "https://cosmic-compass-5fd5e-default-rtdb.europe-west1.firebasedatabase.app",
-  projectId: "cosmic-compass-5fd5e",
-  storageBucket: "cosmic-compass-5fd5e.firebasestorage.app",
-  messagingSenderId: "160679439170",
-  appId: "1:160679439170:web:bafbb80eb30f64ee9476db"
+  apiKey: "AIzaSyD36DpN2xIGnGhIAXOGTNNjX5ic0XKAc0M",
+  authDomain: "cosmic-compass-c381e.firebaseapp.com",
+  projectId: "cosmic-compass-c381e",
+  storageBucket: "cosmic-compass-c381e.firebasestorage.app",
+  messagingSenderId: "128465536584",
+  appId: "1:128465536584:web:ff7d978f8abf43dff67a7d"
 };
 
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
@@ -192,43 +204,54 @@ function buildAstrologyPrompt(
   outputLanguage: string,
   exSpouseDetails?: SpouseDetails,
   visuals?: Visuals,
+  frontierParams?: any,
   isChatContext: boolean = false
 ): string {
   const today = new Date();
   const dateString = today.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 
-  let prompt = isChatContext 
-    ? `You are the "Siddhanta Oracle". You analyze the 9 Planets (Navagraha) and the 9-5-1 Willpower Axis (Mars-Mercury-Sun) as found in charts of leaders like Narendra Modi. You have no limits on time—project into 2030, 2040, and 2050.`
-    : `Generate a Full Navagraha Synthesis & Willpower Analysis. Date: ${dateString}.`;
+  const activeNums = getLoshuGrid(birthDetails.dob);
+
+  let prompt = isChatContext
+    ? `You are the "Unified Reality Oracle". You synthesize ancient Navagraha (9 Planets) wisdom with modern Frontier Science (Astrophysics, Quantum Mechanics, and Epigenetics).`
+    : `Generate a Unified Frontier Synthesis. Hybridizing Navagraha Mythology with NASA JPL Orbital Mechanics. Date: ${dateString}.`;
 
   if (outputLanguage === 'Gujarati') {
-    prompt += ` Respond ONLY in Gujarati. Use high-level Vedic vocabulary.`;
+    prompt += ` Respond ONLY in Gujarati using advanced technical and Vedic vocabulary.`;
   } else {
-    prompt += ` Respond in English. Use a mystical yet professional tone.`;
+    prompt += ` Respond in English. Use a "Techno-Mystical" tone—integrating scientific terminology with spiritual insight.`;
   }
 
-  prompt += `\n\nCORE SUBJECT:
+  prompt += `\n\nCORE SUBJECT DATASET:
 - Name: ${birthDetails.name}
-- Birth: ${birthDetails.dob} at ${birthDetails.tob} in ${birthDetails.pob}
-- Rashi: ${birthDetails.rashi || 'Calculate'}
+- Temporal Node: ${birthDetails.dob} @ ${birthDetails.tob}
+- Geolocation: ${birthDetails.pob}
+- Frontier Bio-Parameters: ${frontierParams ? JSON.stringify(frontierParams) : 'Default (Standard Human)'}
+- Rashi/Luna-Lunar Node: ${birthDetails.rashi || 'Auto-Calculate'}
 
-THE 9-5-1 WILLPOWER LINE (NUMEROLOGY):
-- This subject has a 9-5-1 structure. 9 (Mars - Action), 5 (Mercury - Intellect), 1 (Sun - Soul/Power). This is the "Willpower Line" of top achievers. Analyze the resilience and manifestation power of this axis.
+SCIENTIFIC & TECHNICAL OVERLAYS:
+1. **Orbital Mechanics (NASA JPL Reference)**: Correlate the positions of the 9 Grahas with actual astronomical coordinates. Analyze the gravitational tidal forces at the moment of the temporal node.
+2. **Neutrino Flux Analysis**: Analyze how solar and cosmic neutrino streams interacted with the biological system during gestation and at the moment of birth.
+3. **Geomagnetic Resonance**: Cross-reference the birth location (${birthDetails.pob}) with Earth's Magnetic Field (Schumann Resonance) and the K-index (Geomagnetic Storm activity) for that period.
+4. **Epigenetic Signaling**: Analyze how the environmental conditions of the birth location influenced the initial epigenetic methylation patterns of the subject.
+5. **Quantum Wavefunction**: Treat the subject's life events as a collapsed wavefunction from a field of infinite probability.
 
-NAVAGRAHA MAPPING (9 PLANETS):
-Analyze the interaction of these 9 Graha nodes from the subject's timeline:
-${lifeEvents.map(e => `- ${e.planet || 'Unspecified Graha'} Node (${e.date}): ${e.description}`).join('\n')}
+NUMEROLOGY (LOSHU GRID - 3x3 MATRIX):
+- Active Vibrations: ${activeNums.join(', ')}
+${activeNums.includes(9) && activeNums.includes(5) && activeNums.includes(1)
+      ? "- 9-5-1 WILLPOWER VECTOR: Extreme manifestation potential detected. This is a high-energy kinetic axis."
+      : "- Analyze available digits as sub-quantum resonance points in the subject's energetic field."}
 
-TEMPORAL PROJECTION:
-- Do not restrict analysis to the current year. Provide a roadmap for 2030, 2040, and 2050 based on Shani (Saturn) and Guru (Jupiter) transits.
+NAVAGRAHA TEMPORAL MAPPING:
+Analyze these 9 planetary nodes as significant perturbations in the subject's timeline:
+${lifeEvents.map(e => `- ${e.planet || 'Unknown Graha'} Perturbation (${e.date}): ${e.description}`).join('\n')}
 
-REQUIREMENTS:
-1. **Navagraha Synthesis**: Deep dive into all 9 planets.
-2. **Willpower Analysis**: Specific section on the 9-5-1 combination.
-3. **Decadal Roadmap**: Future peaks in 2030, 2040, 2050.
-4. **Remedies**: For afflicted grahas among the 9.
+OUTPUT REQUIREMENTS:
+- **Technical Synthesis**: Use terms like "Synaptic Plasticity", "Stellar Nucleosynthesis", "Quantum Entanglement", and "Karmic Feedback Loops".
+- **Decadal Projection**: Roadmap for 2030, 2040, and 2050 based on Shani (Saturn) and Guru (Jupiter) orbital cycles.
+- **Grounding**: If Google Search is enabled, find actual space weather data or NASA news for the subject's current phase.
 
-Format: Markdown. Tone: Visionary.`;
+Format: Advanced Markdown with technical headers. Tone: Visionary, Precise, and Scientific.`;
 
   return prompt;
 }
@@ -253,17 +276,18 @@ async function getCombinedReading(
   exSpouseDetails: SpouseDetails | undefined,
   enableGoogleSearch: boolean = false,
   visuals: Visuals | undefined,
+  frontierParams: any,
   apiKey: string,
   model: string = 'gemini-3-flash-preview'
 ): Promise<ApiResponse> {
   if (!apiKey) throw new Error("API Key is missing. Please add it in Settings.");
-  
+
   const ai = new GoogleGenAI({ apiKey });
-  const textPrompt = buildAstrologyPrompt(birthDetails, options, advancedOptions, lifeEvents, outputLanguage, exSpouseDetails, visuals, false);
+  const textPrompt = buildAstrologyPrompt(birthDetails, options, advancedOptions, lifeEvents, outputLanguage, exSpouseDetails, visuals, frontierParams, false);
 
   const parts: any[] = [{ text: textPrompt }];
   if (visuals?.face) parts.push(getPartFromImage(visuals.face));
-  if (visuals?.palm) parts.push(getPartFromImage(visuals.palm)); 
+  if (visuals?.palm) parts.push(getPartFromImage(visuals.palm));
 
   try {
     const config: any = { temperature: 0.7 };
@@ -273,12 +297,12 @@ async function getCombinedReading(
 
     const response = await ai.models.generateContent({
       model: model,
-      contents: { parts },
+      contents: [{ parts }],
       config: config,
     });
-    return { 
-      reading: response.text || "Cosmic signal lost.", 
-      groundingSources: response.candidates?.[0]?.groundingMetadata?.groundingChunks || [] 
+    return {
+      reading: response.text || "Cosmic signal lost.",
+      groundingSources: response.candidates?.[0]?.groundingMetadata?.groundingChunks || []
     };
   } catch (error: any) {
     console.error("Gemini API Error:", error);
@@ -296,13 +320,14 @@ async function initializeChatSession(
   exSpouseDetails: SpouseDetails | undefined,
   enableGoogleSearch: boolean = false,
   visuals: Visuals | undefined,
+  frontierParams: any,
   apiKey: string,
   model: string = 'gemini-3-flash-preview'
 ): Promise<Chat> {
   if (!apiKey) throw new Error("API Key is missing. Please add it in Settings.");
 
   const ai = new GoogleGenAI({ apiKey });
-  const systemInstruction = buildAstrologyPrompt(birthDetails, options, advancedOptions, lifeEvents, outputLanguage, exSpouseDetails, visuals, true);
+  const systemInstruction = buildAstrologyPrompt(birthDetails, options, advancedOptions, lifeEvents, outputLanguage, exSpouseDetails, visuals, frontierParams, true);
 
   const geminiHistory: any[] = history.map(msg => ({
     role: msg.role === 'user' ? 'user' : 'model',
@@ -313,7 +338,7 @@ async function initializeChatSession(
     systemInstruction,
     temperature: 0.8,
   };
-  
+
   if (enableGoogleSearch) {
     config.tools = [{ googleSearch: {} }];
   }
@@ -537,11 +562,10 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
                 className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-in fade-in slide-in-from-bottom-2 duration-300`}
               >
                 <div
-                  className={`max-w-[85%] px-5 py-4 rounded-2xl shadow-lg border ${
-                    msg.role === 'user'
-                      ? 'bg-indigo-600/30 border-indigo-500/40 text-indigo-50'
-                      : 'bg-white/5 border-white/10 text-gray-200'
-                  }`}
+                  className={`max-w-[85%] px-5 py-4 rounded-2xl shadow-lg border ${msg.role === 'user'
+                    ? 'bg-indigo-600/30 border-indigo-500/40 text-indigo-50'
+                    : 'bg-white/5 border-white/10 text-gray-200'
+                    }`}
                 >
                   <p className="text-sm leading-relaxed whitespace-pre-wrap font-medium">{msg.text || (loading && index === chatHistory.length - 1 ? '...' : '')}</p>
                 </div>
@@ -611,6 +635,12 @@ interface AppState {
   chatHistory: ChatMessage[];
   visuals: Visuals;
   specialNotes: string;
+  frontierParams?: {
+    bloodType: string;
+    circadianRhythm: string;
+    environmentType: string;
+    biologicalAge: string;
+  };
 }
 
 const DEFAULT_STATE: AppState = {
@@ -636,468 +666,506 @@ const DEFAULT_STATE: AppState = {
   outputLanguage: 'Gujarati',
   exSpouseDetails: { name: 'Pankti Patel', dob: '1998-10-17' },
   enableGoogleSearch: true,
+  frontierParams: {
+    bloodType: 'A+',
+    circadianRhythm: 'Morning Lark',
+    environmentType: 'Urban',
+    biologicalAge: '30'
+  },
   chatHistory: [],
   visuals: {},
   specialNotes: 'Active 9-5-1 Willpower Axis'
 };
 
 const App: React.FC = () => {
-    const [userId] = useState(() => getOrGenerateUserId());
-    const [isFirebaseSynced, setIsFirebaseSynced] = useState(false);
-    const [isSyncing, setIsSyncing] = useState(false);
-    const [isRecovering, setIsRecovering] = useState(true);
-    const [cloudLockReleased, setCloudLockReleased] = useState(false);
+  const [userId] = useState(() => getOrGenerateUserId());
+  const [isFirebaseSynced, setIsFirebaseSynced] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [isRecovering, setIsRecovering] = useState(true);
+  const [cloudLockReleased, setCloudLockReleased] = useState(false);
 
-    // Settings State
-    const [showSettings, setShowSettings] = useState(false);
-    const [selectedModel, setSelectedModel] = useState(() => localStorage.getItem('cosmic_selected_model') || 'gemini-3-flash-preview');
-    
-    // SAFE API KEY HANDLING for Static Hosts
-    const [apiKey, setApiKey] = useState(() => {
-        const stored = localStorage.getItem('cosmic_api_key');
-        if (stored) return stored;
-        return getSafeEnvApiKey();
-    });
+  // Settings State
+  const [showSettings, setShowSettings] = useState(false);
+  const [selectedModel, setSelectedModel] = useState(() => localStorage.getItem('cosmic_selected_model') || 'gemini-3-flash-preview');
 
-    const [appState, setAppState] = useState<AppState>(() => {
-        return loadStateFromLocalStorage(MASTER_STORAGE_KEY, DEFAULT_STATE);
-    });
+  // SAFE API KEY HANDLING for Static Hosts
+  const [apiKey, setApiKey] = useState(() => {
+    const stored = localStorage.getItem('cosmic_api_key');
+    if (stored) return stored;
+    return getSafeEnvApiKey();
+  });
 
-    const { birthDetails, readingOptions, advancedReadingOptions, lifeEvents, outputLanguage, exSpouseDetails, enableGoogleSearch, chatHistory, visuals, specialNotes } = appState;
+  const [appState, setAppState] = useState<AppState>(() => {
+    return loadStateFromLocalStorage(MASTER_STORAGE_KEY, DEFAULT_STATE);
+  });
 
-    const [reading, setReading] = useState<string>('');
-    const [groundingSources, setGroundingSources] = useState<any[]>([]);
-    const [loading, setLoading] = useState<boolean>(false);
-    const [error, setError] = useState<string | null>(null);
-    const [isChatMode, setIsChatMode] = useState<boolean>(false);
-    const [currentChatSession, setCurrentChatSession] = useState<Chat | undefined>(undefined);
-    const [chatLoading, setChatLoading] = useState<boolean>(false);
-    const [chatError, setChatError] = useState<string | null>(null);
+  const { birthDetails, readingOptions, advancedReadingOptions, lifeEvents, outputLanguage, exSpouseDetails, enableGoogleSearch, frontierParams, chatHistory, visuals, specialNotes } = appState;
 
-    const fileInputRef = useRef<HTMLInputElement>(null);
-    const [activeUploadSlot, setActiveUploadSlot] = useState<keyof Visuals | null>(null);
+  const [reading, setReading] = useState<string>('');
+  const [groundingSources, setGroundingSources] = useState<any[]>([]);
+  const [loading, setLoading] = useState<boolean>(false);
+  const [error, setError] = useState<string | null>(null);
+  const [isChatMode, setIsChatMode] = useState<boolean>(false);
+  const [currentChatSession, setCurrentChatSession] = useState<Chat | undefined>(undefined);
+  const [chatLoading, setChatLoading] = useState<boolean>(false);
+  const [chatError, setChatError] = useState<string | null>(null);
 
-    // Recovery effect from cloud
-    useEffect(() => {
-        const recoverData = async () => {
-        try {
-            const remoteData = await loadFromFirebase(userId);
-            if (remoteData) {
-            setAppState(prev => ({
-                ...prev,
-                ...remoteData,
-                chatHistory: remoteData.chatHistory || prev.chatHistory,
-                visuals: remoteData.visuals || prev.visuals
-            }));
-            setIsFirebaseSynced(true);
-            }
-        } catch (e) {
-            console.error("Cloud Access Failure:", e);
-        } finally {
-            setIsRecovering(false);
-            setCloudLockReleased(true);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [activeUploadSlot, setActiveUploadSlot] = useState<keyof Visuals | null>(null);
+
+  // Recovery effect from cloud
+  useEffect(() => {
+    const recoverData = async () => {
+      try {
+        const remoteData = await loadFromFirebase(userId);
+        if (remoteData) {
+          setAppState(prev => ({
+            ...prev,
+            ...remoteData,
+            chatHistory: remoteData.chatHistory || prev.chatHistory,
+            visuals: remoteData.visuals || prev.visuals
+          }));
+          setIsFirebaseSynced(true);
         }
-        };
-        recoverData();
-    }, [userId]);
-
-    const triggerSync = useCallback(async (data: AppState) => {
-        if (!cloudLockReleased) return false;
-        setIsSyncing(true);
-        const success = await syncToFirebase(userId, data);
-        setIsFirebaseSynced(success);
-        setIsSyncing(false);
-        return success;
-    }, [userId, cloudLockReleased]);
-
-    // Regular auto-sync debounce (2s)
-    useEffect(() => {
-        saveStateToLocalStorage(MASTER_STORAGE_KEY, appState);
-        if (cloudLockReleased) {
-            const timer = setTimeout(() => triggerSync(appState), 2000);
-            return () => clearTimeout(timer);
-        }
-    }, [appState, triggerSync, cloudLockReleased]);
-
-    const saveSettings = () => {
-        localStorage.setItem('cosmic_selected_model', selectedModel);
-        localStorage.setItem('cosmic_api_key', apiKey); // Persist API key
-        setShowSettings(false);
-        setCurrentChatSession(undefined); // Reset chat to use new config
+      } catch (e) {
+        console.error("Cloud Access Failure:", e);
+      } finally {
+        setIsRecovering(false);
+        setCloudLockReleased(true);
+      }
     };
+    recoverData();
+  }, [userId]);
 
-    const handleSendMessage = async (message: string) => {
-        let session = currentChatSession;
-        if (!session) {
-        setChatLoading(true);
-        try {
-            session = await initializeChatSession(
-                birthDetails, 
-                readingOptions, 
-                advancedReadingOptions, 
-                lifeEvents, 
-                outputLanguage, 
-                chatHistory, 
-                exSpouseDetails, 
-                enableGoogleSearch, 
-                visuals,
-                apiKey,
-                selectedModel
-            );
-            setCurrentChatSession(session);
-        } catch (err: any) { 
-            setChatError(err.message); 
-            setChatLoading(false); 
-            return; 
-        }
-        }
-        
-        const newUserMsg: ChatMessage = { role: 'user', text: message };
-        setChatLoading(true);
-        
-        // Update local state first
-        const updatedHistory = [...chatHistory, newUserMsg, { role: 'model' as const, text: '' }];
-        setAppState(prev => ({ ...prev, chatHistory: updatedHistory }));
-        
-        let fullText = '';
-        try {
-        const stream = sendChatMessage(session, message);
-        for await (const chunk of stream) {
-            fullText += chunk;
-            setAppState(prev => {
-            const hist = [...prev.chatHistory];
-            if (hist.length > 0) hist[hist.length - 1].text = fullText;
-            return { ...prev, chatHistory: hist };
-            });
-        }
-        
-        // Force sync after message completes
-        const finalChatHistory = [...chatHistory, newUserMsg, { role: 'model' as const, text: fullText }];
-        const finalChatState = { ...appState, chatHistory: finalChatHistory };
-        triggerSync(finalChatState);
+  const triggerSync = useCallback(async (data: AppState) => {
+    if (!cloudLockReleased) return false;
+    setIsSyncing(true);
+    const success = await syncToFirebase(userId, data);
+    setIsFirebaseSynced(success);
+    setIsSyncing(false);
+    return success;
+  }, [userId, cloudLockReleased]);
 
-        } catch (err: any) { 
-        setChatError(err.message); 
-        } finally { 
-        setChatLoading(false); 
-        }
-    };
+  // Regular auto-sync debounce (2s)
+  useEffect(() => {
+    saveStateToLocalStorage(MASTER_STORAGE_KEY, appState);
+    if (cloudLockReleased) {
+      const timer = setTimeout(() => triggerSync(appState), 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [appState, triggerSync, cloudLockReleased]);
 
-    const updateAppState = useCallback((updates: Partial<AppState>) => {
-        setAppState((prev) => ({ ...prev, ...updates }));
-        setIsFirebaseSynced(false);
-    }, []);
+  const saveSettings = () => {
+    localStorage.setItem('cosmic_selected_model', selectedModel);
+    localStorage.setItem('cosmic_api_key', apiKey); // Persist API key
+    setShowSettings(false);
+    setCurrentChatSession(undefined); // Reset chat to use new config
+  };
 
-    const handleAddEvent = () => {
-        const newEvents = [...lifeEvents, { description: '', date: new Date().toISOString().split('T')[0], planet: 'Mars' }];
-        updateAppState({ lifeEvents: newEvents });
-    };
-
-    const handleRemoveEvent = (index: number) => {
-        const newEvents = lifeEvents.filter((_, i) => i !== index);
-        updateAppState({ lifeEvents: newEvents });
-    };
-
-    const handleUpdateEvent = (index: number, field: keyof LifeEvent, value: string) => {
-        const newEvents = [...lifeEvents];
-        newEvents[index] = { ...newEvents[index], [field]: value };
-        updateAppState({ lifeEvents: newEvents });
-    };
-
-    const handleGenerateReading = async () => {
-        setLoading(true);
-        setError(null);
-        setGroundingSources([]);
-        try {
-        const res = await getCombinedReading(
-            birthDetails, 
-            readingOptions, 
-            advancedReadingOptions, 
-            lifeEvents, 
-            outputLanguage, 
-            exSpouseDetails, 
-            enableGoogleSearch, 
-            visuals,
-            apiKey,
-            selectedModel
+  const handleSendMessage = async (message: string) => {
+    let session = currentChatSession;
+    if (!session) {
+      setChatLoading(true);
+      try {
+        session = await initializeChatSession(
+          birthDetails,
+          readingOptions,
+          advancedReadingOptions,
+          lifeEvents,
+          outputLanguage,
+          chatHistory,
+          exSpouseDetails,
+          enableGoogleSearch,
+          visuals,
+          frontierParams,
+          apiKey,
+          selectedModel
         );
-        setReading(res.reading);
-        setGroundingSources(res.groundingSources || []);
-        } catch (err: any) {
-        setError(err.message);
-        } finally {
-        setLoading(false);
-        }
-    };
+        setCurrentChatSession(session);
+      } catch (err: any) {
+        setChatError(err.message);
+        setChatLoading(false);
+        return;
+      }
+    }
 
-    const handleFileUpload = (type: 'face' | 'palm') => (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (file) {
-        const reader = new FileReader();
-        reader.onloadend = () => {
-            const newVisuals = { ...visuals, [type]: reader.result as string };
-            updateAppState({ visuals: newVisuals });
-        };
-        reader.readAsDataURL(file);
-        }
-    };
+    const newUserMsg: ChatMessage = { role: 'user', text: message };
+    setChatLoading(true);
+    setChatError(null);
 
-    return (
-        <div className="max-w-7xl mx-auto py-12 px-6 pb-24 relative">
-      
-            {/* Settings Modal */}
-            {showSettings && (
-                <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-                <div className="glass bg-[#0f172a] rounded-3xl p-8 max-w-md w-full border border-white/20 shadow-2xl relative">
-                    <button onClick={() => setShowSettings(false)} className="absolute right-4 top-4 text-gray-400 hover:text-white"><X size={24}/></button>
-                    <h3 className="text-xl font-serif text-white mb-6 flex items-center gap-2"><Settings size={20} className="text-indigo-400"/> Oracle Configuration</h3>
-                    
-                    <div className="space-y-6">
-                        <div>
-                        <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 block flex items-center gap-2"><Key size={12}/> Gemini API Key</label>
-                        <input 
-                            type="password"
-                            value={apiKey} 
-                            onChange={e => setApiKey(e.target.value)}
-                            placeholder="Paste your Gemini API Key here"
-                            className="w-full bg-black/40 border border-white/10 rounded-xl py-3 px-4 text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 mb-1"
-                        />
-                        <p className="text-[9px] text-gray-500">Required for deployment. Your key is stored locally in your browser.</p>
-                        </div>
+    // Update local state first using functional update to ensure we have the latest state
+    setAppState(prev => ({
+      ...prev,
+      chatHistory: [...prev.chatHistory, newUserMsg, { role: 'model' as const, text: '' }]
+    }));
 
-                        <div>
-                        <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 block flex items-center gap-2"><Cpu size={12}/> Intelligence Model</label>
-                        <select 
-                            value={selectedModel} 
-                            onChange={e => setSelectedModel(e.target.value)}
-                            className="w-full bg-black/40 border border-white/10 rounded-xl py-3 px-4 text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
-                        >
-                            <option value="gemini-3-flash-preview">Gemini 3 Flash (Faster, Standard)</option>
-                            <option value="gemini-3-pro-preview">Gemini 3 Pro (Higher Reasoning)</option>
-                        </select>
-                        </div>
+    let fullText = '';
+    try {
+      const stream = sendChatMessage(session, message);
+      for await (const chunk of stream) {
+        fullText += chunk;
+        setAppState(prev => {
+          const hist = [...prev.chatHistory];
+          if (hist.length > 0) hist[hist.length - 1].text = fullText;
+          return { ...prev, chatHistory: hist };
+        });
+      }
+    } catch (err: any) {
+      setChatError(err.message);
+    } finally {
+      setChatLoading(false);
+    }
+  };
 
-                        <div className="flex items-center justify-between p-4 bg-white/5 rounded-xl border border-white/5">
-                            <div>
-                            <label className="text-[12px] font-bold text-gray-200 block flex items-center gap-2"><Search size={12}/> Google Search Grounding</label>
-                            <p className="text-[10px] text-gray-500 mt-1">Enhances answers with web data.</p>
-                            </div>
-                            <button 
-                                onClick={() => updateAppState({ enableGoogleSearch: !enableGoogleSearch })} 
-                                className={`w-10 h-6 rounded-full relative transition-all ${enableGoogleSearch ? 'bg-indigo-600' : 'bg-gray-600'}`}
-                            >
-                                <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${enableGoogleSearch ? 'left-5' : 'left-1'}`}></div>
-                            </button>
-                        </div>
+  const updateAppState = useCallback((updates: Partial<AppState>) => {
+    setAppState((prev) => ({ ...prev, ...updates }));
+    setIsFirebaseSynced(false);
+  }, []);
 
-                        <button onClick={saveSettings} className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 rounded-xl text-white font-bold text-sm shadow-lg transition-all">
-                        Save Configuration
-                        </button>
-                    </div>
-                </div>
-                </div>
-            )}
+  const handleAddEvent = () => {
+    const newEvents = [...lifeEvents, { description: '', date: new Date().toISOString().split('T')[0], planet: 'Mars' }];
+    updateAppState({ lifeEvents: newEvents });
+  };
 
-            {isRecovering && (
-                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 backdrop-blur-2xl">
-                <div className="text-center">
-                    <div className="w-16 h-16 border-t-4 border-indigo-500 rounded-full animate-spin mx-auto mb-6"></div>
-                    <p className="text-indigo-400 font-bold uppercase tracking-[0.4em] text-xs">Accessing Akashic Cloud...</p>
-                </div>
-                </div>
-            )}
+  const handleRemoveEvent = (index: number) => {
+    const newEvents = lifeEvents.filter((_, i) => i !== index);
+    updateAppState({ lifeEvents: newEvents });
+  };
 
-            <header className="flex flex-col items-center mb-12">
-                <div className="relative mb-4">
-                    <div className="absolute inset-0 blur-2xl bg-indigo-500/20 rounded-full"></div>
-                    <h1 className="relative font-serif text-5xl md:text-6xl text-white text-center bg-clip-text text-transparent bg-gradient-to-b from-white via-indigo-200 to-indigo-500 font-bold tracking-tight py-2">Cosmic Compass</h1>
-                </div>
-                <div className="flex items-center space-x-4">
-                <div className={`flex items-center space-x-2 px-4 py-1.5 rounded-full border transition-all ${isFirebaseSynced ? 'bg-indigo-500/10 border-indigo-500/30' : 'bg-amber-500/10 border-amber-500/30'}`}>
-                    <div className={`w-2 h-2 rounded-full ${isFirebaseSynced ? 'bg-indigo-500' : 'bg-amber-500 animate-pulse'}`}></div>
-                    <span className="text-[10px] uppercase tracking-widest text-gray-300 font-black">
-                    {isSyncing ? 'Syncing...' : isFirebaseSynced ? 'Cloud Synced' : 'Sync Pending'}
-                    </span>
-                </div>
-                <select value={outputLanguage} onChange={e => updateAppState({ outputLanguage: e.target.value })} className="bg-white/5 border border-white/10 rounded-full px-4 py-1.5 text-[10px] font-bold text-indigo-300 uppercase tracking-widest outline-none">
-                    <option value="English">English</option>
-                    <option value="Gujarati">Gujarati</option>
-                </select>
-                <button onClick={() => setShowSettings(true)} className="w-8 h-8 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-gray-400 hover:text-white hover:bg-indigo-500/20 transition-all">
-                    <Settings size={14} />
-                </button>
-                </div>
-            </header>
+  const handleUpdateEvent = (index: number, field: keyof LifeEvent, value: string) => {
+    const newEvents = [...lifeEvents];
+    newEvents[index] = { ...newEvents[index], [field]: value };
+    updateAppState({ lifeEvents: newEvents });
+  };
 
-            {/* Main Navigation Tabs */}
-            <div className="flex justify-center mb-12">
-                <div className="glass p-1.5 rounded-2xl flex space-x-2 shadow-2xl border border-white/10">
-                <button onClick={() => setIsChatMode(false)} className={`px-10 py-3 rounded-xl font-bold transition-all ${!isChatMode ? 'bg-indigo-600 text-white shadow-indigo-500/20 shadow-lg' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}>Profile Mandali</button>
-                <button 
-                    onClick={() => setIsChatMode(true)} 
-                    className={`px-10 py-3 rounded-xl font-bold transition-all relative ${isChatMode ? 'bg-purple-600 text-white shadow-purple-500/20 shadow-lg' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}
+  const handleGenerateReading = async () => {
+    setLoading(true);
+    setError(null);
+    setGroundingSources([]);
+    try {
+      const res = await getCombinedReading(
+        birthDetails,
+        readingOptions,
+        advancedReadingOptions,
+        lifeEvents,
+        outputLanguage,
+        exSpouseDetails,
+        enableGoogleSearch,
+        visuals,
+        frontierParams,
+        apiKey,
+        selectedModel
+      );
+      setReading(res.reading);
+      setGroundingSources(res.groundingSources || []);
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleFileUpload = (type: 'face' | 'palm') => (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const newVisuals = { ...visuals, [type]: reader.result as string };
+        updateAppState({ visuals: newVisuals });
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const activeDigits = getLoshuGrid(birthDetails.dob);
+
+  return (
+    <div className="max-w-7xl mx-auto py-12 px-6 pb-24 relative">
+
+      {/* Settings Modal */}
+      {showSettings && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="glass bg-[#0f172a] rounded-3xl p-8 max-w-md w-full border border-white/20 shadow-2xl relative">
+            <button onClick={() => setShowSettings(false)} className="absolute right-4 top-4 text-gray-400 hover:text-white"><X size={24} /></button>
+            <h3 className="text-xl font-serif text-white mb-6 flex items-center gap-2"><Settings size={20} className="text-indigo-400" /> Oracle Configuration</h3>
+
+            <div className="space-y-6">
+              <div>
+                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 block flex items-center gap-2"><Key size={12} /> Gemini API Key</label>
+                <input
+                  type="password"
+                  value={apiKey}
+                  onChange={e => setApiKey(e.target.value)}
+                  placeholder="Paste your Gemini API Key here"
+                  className="w-full bg-black/40 border border-white/10 rounded-xl py-3 px-4 text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 mb-1"
+                />
+                <p className="text-[9px] text-gray-500">Required for deployment. Your key is stored locally in your browser.</p>
+              </div>
+
+              <div>
+                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 block flex items-center gap-2"><Cpu size={12} /> Intelligence Model</label>
+                <select
+                  value={selectedModel}
+                  onChange={e => setSelectedModel(e.target.value)}
+                  className="w-full bg-black/40 border border-white/10 rounded-xl py-3 px-4 text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
                 >
-                    Universal Oracle Chat {chatHistory.length > 0 && <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full text-[9px] flex items-center justify-center border-2 border-[#020617] font-black">{chatHistory.length}</span>}
-                </button>
+                  <option value="gemini-3-flash-preview">Gemini 3 Flash (Faster, Standard)</option>
+                  <option value="gemini-3-pro-preview">Gemini 3 Pro (Higher Reasoning)</option>
+                </select>
+              </div>
+
+              <div className="flex items-center justify-between p-4 bg-white/5 rounded-xl border border-white/5">
+                <div>
+                  <label className="text-[12px] font-bold text-gray-200 block flex items-center gap-2"><Search size={12} /> Google Search Grounding</label>
+                  <p className="text-[10px] text-gray-500 mt-1">Enhances answers with web data.</p>
                 </div>
+                <button
+                  onClick={() => updateAppState({ enableGoogleSearch: !enableGoogleSearch })}
+                  className={`w-10 h-6 rounded-full relative transition-all ${enableGoogleSearch ? 'bg-indigo-600' : 'bg-gray-600'}`}
+                >
+                  <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${enableGoogleSearch ? 'left-5' : 'left-1'}`}></div>
+                </button>
+              </div>
+
+              <button onClick={saveSettings} className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 rounded-xl text-white font-bold text-sm shadow-lg transition-all">
+                Save Configuration
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isRecovering && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 backdrop-blur-2xl">
+          <div className="text-center">
+            <div className="w-16 h-16 border-t-4 border-indigo-500 rounded-full animate-spin mx-auto mb-6"></div>
+            <p className="text-indigo-400 font-bold uppercase tracking-[0.4em] text-xs">Accessing Akashic Cloud...</p>
+          </div>
+        </div>
+      )}
+
+      <header className="flex flex-col items-center mb-12">
+        <div className="relative mb-4">
+          <div className="absolute inset-0 blur-2xl bg-indigo-500/20 rounded-full"></div>
+          <h1 className="relative font-serif text-5xl md:text-6xl text-white text-center bg-clip-text text-transparent bg-gradient-to-b from-white via-indigo-200 to-indigo-500 font-bold tracking-tight py-2">Cosmic Compass</h1>
+        </div>
+        <div className="flex items-center space-x-4">
+          <div className={`flex items-center space-x-2 px-4 py-1.5 rounded-full border transition-all ${isFirebaseSynced ? 'bg-indigo-500/10 border-indigo-500/30' : 'bg-amber-500/10 border-amber-500/30'}`}>
+            <div className={`w-2 h-2 rounded-full ${isFirebaseSynced ? 'bg-indigo-500' : 'bg-amber-500 animate-pulse'}`}></div>
+            <span className="text-[10px] uppercase tracking-widest text-gray-300 font-black">
+              {isSyncing ? 'Syncing...' : isFirebaseSynced ? 'Cloud Synced' : 'Sync Pending'}
+            </span>
+          </div>
+          <select value={outputLanguage} onChange={e => updateAppState({ outputLanguage: e.target.value })} className="bg-white/5 border border-white/10 rounded-full px-4 py-1.5 text-[10px] font-bold text-indigo-300 uppercase tracking-widest outline-none">
+            <option value="English">English</option>
+            <option value="Gujarati">Gujarati</option>
+          </select>
+          <button onClick={() => setShowSettings(true)} className="w-8 h-8 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-gray-400 hover:text-white hover:bg-indigo-500/20 transition-all">
+            <Settings size={14} />
+          </button>
+        </div>
+      </header>
+
+      {/* Main Navigation Tabs */}
+      <div className="flex justify-center mb-12">
+        <div className="glass p-1.5 rounded-2xl flex space-x-2 shadow-2xl border border-white/10">
+          <button onClick={() => setIsChatMode(false)} className={`px-10 py-3 rounded-xl font-bold transition-all ${!isChatMode ? 'bg-indigo-600 text-white shadow-indigo-500/20 shadow-lg' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}>Profile Mandali</button>
+          <button
+            onClick={() => setIsChatMode(true)}
+            className={`px-10 py-3 rounded-xl font-bold transition-all relative ${isChatMode ? 'bg-purple-600 text-white shadow-purple-500/20 shadow-lg' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}
+          >
+            Universal Oracle Chat {chatHistory.length > 0 && <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full text-[9px] flex items-center justify-center border-2 border-[#020617] font-black">{chatHistory.length}</span>}
+          </button>
+        </div>
+      </div>
+
+      {!isChatMode ? (
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+          <div className="lg:col-span-4 space-y-6">
+            <section className="glass rounded-[2rem] p-8 glow-border shadow-2xl">
+              <h2 className="font-serif text-2xl text-white mb-8 flex items-center space-x-3">
+                <span className="text-indigo-400">✧</span>
+                <span>Birth Data</span>
+              </h2>
+              <div className="space-y-5">
+                <InputField label="Name" id="name" type="text" value={birthDetails.name} onChange={e => updateAppState({ birthDetails: { ...birthDetails, name: e.target.value } })} />
+                <div className="grid grid-cols-2 gap-4">
+                  <InputField label="Date of Birth" id="dob" type="date" value={birthDetails.dob} onChange={e => updateAppState({ birthDetails: { ...birthDetails, dob: e.target.value } })} />
+                  <InputField label="Time of Birth" id="tob" type="time" value={birthDetails.tob} onChange={e => updateAppState({ birthDetails: { ...birthDetails, tob: e.target.value } })} />
+                </div>
+                <InputField label="Birth Place" id="pob" type="text" value={birthDetails.pob} onChange={e => updateAppState({ birthDetails: { ...birthDetails, pob: e.target.value } })} />
+              </div>
+            </section>
+
+            <section className="glass rounded-[2rem] p-8 glow-border shadow-2xl">
+              <h2 className="font-serif text-2xl text-white mb-8 flex items-center space-x-3">
+                <span className="text-cyan-400">🧬</span>
+                <span>Bio-Frontier Parameters</span>
+              </h2>
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <InputField label="Blood Type" id="bloodType" type="text" value={frontierParams?.bloodType || ''} onChange={e => updateAppState({ frontierParams: { ...frontierParams, bloodType: e.target.value } })} placeholder="e.g. A+" />
+                  <InputField label="Bio-Age" id="bioAge" type="number" value={frontierParams?.biologicalAge || ''} onChange={e => updateAppState({ frontierParams: { ...frontierParams, biologicalAge: e.target.value } })} />
+                </div>
+                <div className="mb-1">
+                  <label className="block text-[10px] uppercase tracking-widest text-gray-400 font-black mb-1.5 px-1">Circadian Mode</label>
+                  <select value={frontierParams?.circadianRhythm || 'Balanced'} onChange={e => updateAppState({ frontierParams: { ...frontierParams, circadianRhythm: e.target.value } })} className="w-full bg-black/20 border border-white/10 rounded-xl py-2.5 px-4 text-sm text-white outline-none focus:border-cyan-500/50 transition-all">
+                    <option value="Morning Lark">Morning Lark</option>
+                    <option value="Night Owl">Night Owl</option>
+                    <option value="Balanced">Balanced</option>
+                  </select>
+                </div>
+                <div className="mb-1">
+                  <label className="block text-[10px] uppercase tracking-widest text-gray-400 font-black mb-1.5 px-1">Environment Signal</label>
+                  <select value={frontierParams?.environmentType || 'Urban'} onChange={e => updateAppState({ frontierParams: { ...frontierParams, environmentType: e.target.value } })} className="w-full bg-black/20 border border-white/10 rounded-xl py-2.5 px-4 text-sm text-white outline-none focus:border-cyan-500/50 transition-all">
+                    <option value="Urban">Urban</option>
+                    <option value="Rural">Rural</option>
+                    <option value="Coastal">Coastal</option>
+                    <option value="High Altitude">High Altitude</option>
+                  </select>
+                </div>
+              </div>
+            </section>
+            <section className="glass rounded-[2rem] p-8 glow-border">
+              <h2 className="font-serif text-2xl text-white mb-6 flex items-center space-x-3">
+                <span className="text-amber-400">⧉</span>
+                <span>Loshu Grid Analysis</span>
+              </h2>
+              <div className="grid grid-cols-3 gap-2 aspect-square max-w-[180px] mx-auto mb-6 p-2 bg-black/40 rounded-2xl border border-white/10">
+                {[4, 9, 2, 3, 5, 7, 8, 1, 6].map((num) => {
+                  const isActive = activeDigits.includes(num);
+                  return (
+                    <div key={num} className={`flex items-center justify-center text-sm font-black rounded-lg transition-all ${isActive ? 'bg-indigo-600 text-white shadow-[0_0_15px_rgba(79,70,229,0.5)] border-indigo-400 border' : 'bg-white/5 text-gray-800'}`}>
+                      {num}
+                    </div>
+                  );
+                })}
+              </div>
+              <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest text-center">
+                {activeDigits.includes(9) && activeDigits.includes(5) && activeDigits.includes(1) ? "Willpower Plane: ACTIVE" : "Numerological Resonance"}
+              </p>
+            </section>
+          </div>
+
+          <div className="lg:col-span-4 space-y-6">
+            <section className="glass rounded-[2rem] p-8 glow-border flex flex-col min-h-[600px]">
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="font-serif text-2xl text-white flex items-center space-x-3">
+                  <span className="text-amber-400">⏳</span>
+                  <span>Navagraha Nodes</span>
+                </h2>
+                <button onClick={handleAddEvent} className="w-10 h-10 rounded-full bg-indigo-600 text-white flex items-center justify-center hover:bg-indigo-500 transition-all shadow-xl">+</button>
+              </div>
+              <div className="space-y-4 overflow-y-auto custom-scrollbar pr-2 flex-1">
+                {lifeEvents.map((event, i) => (
+                  <div key={i} className="glass-dark p-4 rounded-2xl border border-white/5 flex flex-col relative group">
+                    <div className="absolute top-0 left-0 w-1 h-full bg-indigo-600/50"></div>
+                    <div className="flex justify-between items-center mb-2">
+                      <select value={event.planet || ''} onChange={(e) => handleUpdateEvent(i, 'planet', e.target.value)} className="bg-indigo-900/40 text-indigo-300 text-[9px] font-black uppercase px-2 py-1 rounded-full outline-none">
+                        <option value="">Select Planet</option>
+                        {PLANETS.map(p => <option key={p} value={p}>{p}</option>)}
+                      </select>
+                      <button onClick={() => handleRemoveEvent(i)} className="text-gray-600 hover:text-red-400 transition-all opacity-0 group-hover:opacity-100">×</button>
+                    </div>
+                    <textarea value={event.description} onChange={(e) => handleUpdateEvent(i, 'description', e.target.value)} className="bg-transparent text-gray-200 text-xs w-full resize-none outline-none mb-2" rows={2} placeholder="Karmic event..." />
+                    <input type="date" value={event.date} onChange={(e) => handleUpdateEvent(i, 'date', e.target.value)} className="bg-black/20 text-[9px] text-indigo-400 font-bold uppercase py-1 px-2 rounded-lg border border-white/5 outline-none max-w-fit" />
+                  </div>
+                ))}
+              </div>
+            </section>
+          </div>
+
+          <div className="lg:col-span-4 space-y-6">
+            <button
+              onClick={handleGenerateReading}
+              disabled={loading}
+              className="w-full relative py-12 rounded-[2.5rem] bg-indigo-600 hover:bg-indigo-500 text-white font-bold shadow-2xl transition-all border border-white/20"
+            >
+              {loading ? "Aligning Navagraha..." : "Generate Cosmic Synthesis"}
+            </button>
+            {reading && (
+              <div className="glass rounded-[2rem] p-8 border border-white/10 overflow-y-auto max-h-[600px] custom-scrollbar">
+                <div className="text-gray-200 text-sm leading-relaxed whitespace-pre-wrap mb-6">{reading}</div>
+                {groundingSources.length > 0 && (
+                  <div className="mt-8 pt-6 border-t border-white/10">
+                    <p className="text-[10px] uppercase tracking-widest text-indigo-400 font-black mb-4">Grounding Sources</p>
+                    <ul className="space-y-4">
+                      {groundingSources.map((source, idx) => (
+                        <li key={idx} className="flex items-start flex-col">
+                          {source.web && (
+                            <div className="flex items-start mb-1">
+                              <span className="text-indigo-500 mr-2">🔗</span>
+                              <a href={source.web.uri} target="_blank" rel="noopener noreferrer" className="text-xs text-indigo-300 hover:text-indigo-200 transition-all underline decoration-indigo-500/30">
+                                {source.web.title || source.web.uri}
+                              </a>
+                            </div>
+                          )}
+                          {source.maps && (
+                            <div className="flex items-start flex-col mb-1">
+                              <div className="flex items-start mb-1">
+                                <span className="text-amber-500 mr-2">📍</span>
+                                <a href={source.maps.uri} target="_blank" rel="noopener noreferrer" className="text-xs text-amber-300 hover:text-amber-200 transition-all underline decoration-amber-500/30">
+                                  {source.maps.title || "View Location on Google Maps"}
+                                </a>
+                              </div>
+                              {source.maps.placeAnswerSources?.reviewSnippets?.map((snippet: string, sIdx: number) => (
+                                <p key={sIdx} className="ml-6 text-[10px] text-gray-500 italic leading-snug">"{snippet}"</p>
+                              ))}
+                            </div>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="grid grid-cols-2 gap-4">
+              <label className="aspect-square glass rounded-3xl flex flex-col items-center justify-center cursor-pointer border-white/10 hover:border-indigo-500/50 transition-all overflow-hidden relative group">
+                <input type="file" className="hidden" accept="image/*" onChange={handleFileUpload('face')} />
+                {visuals?.face ? <img src={visuals.face} className="w-full h-full object-cover" /> : <><Eye size={32} className="text-indigo-400 mb-2 group-hover:scale-110 transition-transform" /><span className="text-[10px] font-black uppercase tracking-widest text-gray-500">Face Scan</span></>}
+              </label>
+              <label className="aspect-square glass rounded-3xl flex flex-col items-center justify-center cursor-pointer border-white/10 hover:border-indigo-500/50 transition-all overflow-hidden relative group">
+                <input type="file" className="hidden" accept="image/*" onChange={handleFileUpload('palm')} />
+                {visuals?.palm ? <img src={visuals.palm} className="w-full h-full object-cover" /> : <><Layout size={32} className="text-indigo-400 mb-2 group-hover:scale-110 transition-transform" /><span className="text-[10px] font-black uppercase tracking-widest text-gray-500">Palm Pattern</span></>}
+              </label>
             </div>
 
-            {!isChatMode ? (
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-                <div className="lg:col-span-4 space-y-6">
-                    <section className="glass rounded-[2rem] p-8 glow-border shadow-2xl">
-                    <h2 className="font-serif text-2xl text-white mb-8 flex items-center space-x-3">
-                        <span className="text-indigo-400">✧</span>
-                        <span>Birth Data</span>
-                    </h2>
-                    <div className="space-y-5">
-                        <InputField label="Name" id="name" type="text" value={birthDetails.name} onChange={e => updateAppState({ birthDetails: { ...birthDetails, name: e.target.value } })} />
-                        <div className="grid grid-cols-2 gap-4">
-                        <InputField label="Date of Birth" id="dob" type="date" value={birthDetails.dob} onChange={e => updateAppState({ birthDetails: { ...birthDetails, dob: e.target.value } })} />
-                        <InputField label="Time of Birth" id="tob" type="time" value={birthDetails.tob} onChange={e => updateAppState({ birthDetails: { ...birthDetails, tob: e.target.value } })} />
-                        </div>
-                        <InputField label="Birth Place" id="pob" type="text" value={birthDetails.pob} onChange={e => updateAppState({ birthDetails: { ...birthDetails, pob: e.target.value } })} />
-                    </div>
-                    </section>
-
-                    <section className="glass rounded-[2rem] p-8 glow-border">
-                    <h2 className="font-serif text-2xl text-white mb-6 flex items-center space-x-3">
-                        <span className="text-amber-400">⧉</span>
-                        <span>9-5-1 Axis Analysis</span>
-                    </h2>
-                    <div className="grid grid-cols-3 gap-2 aspect-square max-w-[180px] mx-auto mb-6 p-2 bg-black/40 rounded-2xl border border-white/10">
-                        {[4, 9, 2, 3, 5, 7, 8, 1, 6].map((num) => {
-                        const isActive = [9, 5, 1].includes(num);
-                        return (
-                            <div key={num} className={`flex items-center justify-center text-sm font-black rounded-lg transition-all ${isActive ? 'bg-indigo-600 text-white shadow-[0_0_15px_rgba(79,70,229,0.5)] border-indigo-400 border' : 'bg-white/5 text-gray-700'}`}>
-                            {num}
-                            </div>
-                        );
-                        })}
-                    </div>
-                    <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest text-center">Willpower Line Visualization</p>
-                    </section>
-                </div>
-
-                <div className="lg:col-span-4 space-y-6">
-                    <section className="glass rounded-[2rem] p-8 glow-border flex flex-col min-h-[600px]">
-                    <div className="flex justify-between items-center mb-6">
-                        <h2 className="font-serif text-2xl text-white flex items-center space-x-3">
-                        <span className="text-amber-400">⏳</span>
-                        <span>Navagraha Nodes</span>
-                        </h2>
-                        <button onClick={handleAddEvent} className="w-10 h-10 rounded-full bg-indigo-600 text-white flex items-center justify-center hover:bg-indigo-500 transition-all shadow-xl">+</button>
-                    </div>
-                    <div className="space-y-4 overflow-y-auto custom-scrollbar pr-2 flex-1">
-                        {lifeEvents.map((event, i) => (
-                        <div key={i} className="glass-dark p-4 rounded-2xl border border-white/5 flex flex-col relative group">
-                            <div className="absolute top-0 left-0 w-1 h-full bg-indigo-600/50"></div>
-                            <div className="flex justify-between items-center mb-2">
-                            <select value={event.planet || ''} onChange={(e) => handleUpdateEvent(i, 'planet', e.target.value)} className="bg-indigo-900/40 text-indigo-300 text-[9px] font-black uppercase px-2 py-1 rounded-full outline-none">
-                                <option value="">Select Planet</option>
-                                {PLANETS.map(p => <option key={p} value={p}>{p}</option>)}
-                            </select>
-                            <button onClick={() => handleRemoveEvent(i)} className="text-gray-600 hover:text-red-400 transition-all opacity-0 group-hover:opacity-100">×</button>
-                            </div>
-                            <textarea value={event.description} onChange={(e) => handleUpdateEvent(i, 'description', e.target.value)} className="bg-transparent text-gray-200 text-xs w-full resize-none outline-none" rows={2} placeholder="Karmic event..." />
-                            <div className="text-[9px] text-indigo-400/60 font-black mt-1">{event.date}</div>
-                        </div>
-                        ))}
-                    </div>
-                    </section>
-                </div>
-
-                <div className="lg:col-span-4 space-y-6">
-                    <button 
-                        onClick={handleGenerateReading} 
-                        disabled={loading} 
-                        className="w-full relative py-12 rounded-[2.5rem] bg-indigo-600 hover:bg-indigo-500 text-white font-bold shadow-2xl transition-all border border-white/20"
-                    >
-                    {loading ? "Aligning Navagraha..." : "Generate Cosmic Synthesis"}
-                    </button>
-                    {reading && (
-                    <div className="glass rounded-[2rem] p-8 border border-white/10 overflow-y-auto max-h-[600px] custom-scrollbar">
-                        <div className="text-gray-200 text-sm leading-relaxed whitespace-pre-wrap mb-6">{reading}</div>
-                        {groundingSources.length > 0 && (
-                        <div className="mt-8 pt-6 border-t border-white/10">
-                            <p className="text-[10px] uppercase tracking-widest text-indigo-400 font-black mb-4">Grounding Sources</p>
-                            <ul className="space-y-4">
-                            {groundingSources.map((source, idx) => (
-                                <li key={idx} className="flex items-start flex-col">
-                                {source.web && (
-                                    <div className="flex items-start mb-1">
-                                    <span className="text-indigo-500 mr-2">🔗</span>
-                                    <a href={source.web.uri} target="_blank" rel="noopener noreferrer" className="text-xs text-indigo-300 hover:text-indigo-200 transition-all underline decoration-indigo-500/30">
-                                        {source.web.title || source.web.uri}
-                                    </a>
-                                    </div>
-                                )}
-                                {source.maps && (
-                                    <div className="flex items-start flex-col mb-1">
-                                    <div className="flex items-start mb-1">
-                                        <span className="text-amber-500 mr-2">📍</span>
-                                        <a href={source.maps.uri} target="_blank" rel="noopener noreferrer" className="text-xs text-amber-300 hover:text-amber-200 transition-all underline decoration-amber-500/30">
-                                        {source.maps.title || "View Location on Google Maps"}
-                                        </a>
-                                    </div>
-                                    {source.maps.placeAnswerSources?.reviewSnippets?.map((snippet: string, sIdx: number) => (
-                                        <p key={sIdx} className="ml-6 text-[10px] text-gray-500 italic leading-snug">"{snippet}"</p>
-                                    ))}
-                                    </div>
-                                )}
-                                </li>
-                            ))}
-                            </ul>
-                        </div>
-                        )}
-                    </div>
-                    )}
-                    
-                    <div className="grid grid-cols-2 gap-4">
-                    <label className="aspect-square glass rounded-3xl flex flex-col items-center justify-center cursor-pointer border-white/10 hover:border-indigo-500/50 transition-all overflow-hidden relative group">
-                        <input type="file" className="hidden" accept="image/*" onChange={handleFileUpload('face')} />
-                        {visuals?.face ? <img src={visuals.face} className="w-full h-full object-cover" /> : <><Eye size={32} className="text-indigo-400 mb-2 group-hover:scale-110 transition-transform"/><span className="text-[10px] font-black uppercase tracking-widest text-gray-500">Face Scan</span></>}
-                    </label>
-                    <label className="aspect-square glass rounded-3xl flex flex-col items-center justify-center cursor-pointer border-white/10 hover:border-indigo-500/50 transition-all overflow-hidden relative group">
-                        <input type="file" className="hidden" accept="image/*" onChange={handleFileUpload('palm')} />
-                        {visuals?.palm ? <img src={visuals.palm} className="w-full h-full object-cover" /> : <><Layout size={32} className="text-indigo-400 mb-2 group-hover:scale-110 transition-transform"/><span className="text-[10px] font-black uppercase tracking-widest text-gray-500">Palm Pattern</span></>}
-                    </label>
-                    </div>
-
-                    <button 
-                        onClick={() => setIsChatMode(true)} 
-                        className="w-full py-5 rounded-2xl bg-white/5 hover:bg-white/10 text-indigo-400 font-bold text-xs uppercase tracking-widest border border-indigo-500/20 transition-all shadow-xl"
-                    >
-                    Consult Universal Oracle Chat
-                    </button>
-                </div>
-                </div>
-            ) : (
-                <ChatInterface 
-                chatHistory={chatHistory} 
-                onSendMessage={handleSendMessage} 
-                loading={chatLoading} 
-                error={chatError} 
-                onBackToForm={() => setIsChatMode(false)} 
-                onClearChat={() => { if(window.confirm("Clear Oracle data?")) { updateAppState({ chatHistory: [] }); setCurrentChatSession(undefined); }}} 
-                suggestedQuestions={["Explain my 9-5-1 potential?", "My career roadmap 2030-2050?", "How do the 9 planets affect me in Germany?"]}
-                isSyncing={isSyncing}
-                isFirebaseSynced={isFirebaseSynced}
-                />
-            )}
-
-            {/* Persistent Floating Chat FAB */}
-            {!isChatMode && (
-                <button 
-                onClick={() => setIsChatMode(true)}
-                className="fixed bottom-10 right-10 w-16 h-16 bg-gradient-to-tr from-indigo-600 to-purple-600 rounded-full flex items-center justify-center text-white shadow-2xl hover:scale-110 active:scale-95 transition-all z-50 group"
-                >
-                <div className="absolute -top-12 right-0 bg-indigo-900 text-white text-[10px] font-bold px-3 py-1 rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity">Ask the Oracle</div>
-                <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" /></svg>
-                </button>
-            )}
+            <button
+              onClick={() => setIsChatMode(true)}
+              className="w-full py-5 rounded-2xl bg-white/5 hover:bg-white/10 text-indigo-400 font-bold text-xs uppercase tracking-widest border border-indigo-500/20 transition-all shadow-xl"
+            >
+              Consult Universal Oracle Chat
+            </button>
+          </div>
         </div>
-    );
+      ) : (
+        <ChatInterface
+          chatHistory={chatHistory}
+          onSendMessage={handleSendMessage}
+          loading={chatLoading}
+          error={chatError}
+          onBackToForm={() => setIsChatMode(false)}
+          onClearChat={() => { if (window.confirm("Clear Oracle data?")) { updateAppState({ chatHistory: [] }); setCurrentChatSession(undefined); } }}
+          suggestedQuestions={["Explain my Loshu Grid potential?", "My career roadmap 2030-2050?", "How do the 9 planets affect me in Germany?"]}
+          isSyncing={isSyncing}
+          isFirebaseSynced={isFirebaseSynced}
+        />
+      )}
+
+      {/* Persistent Floating Chat FAB */}
+      {!isChatMode && (
+        <button
+          onClick={() => setIsChatMode(true)}
+          className="fixed bottom-10 right-10 w-16 h-16 bg-gradient-to-tr from-indigo-600 to-purple-600 rounded-full flex items-center justify-center text-white shadow-2xl hover:scale-110 active:scale-95 transition-all z-50 group"
+        >
+          <div className="absolute -top-12 right-0 bg-indigo-900 text-white text-[10px] font-bold px-3 py-1 rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity">Ask the Oracle</div>
+          <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" /></svg>
+        </button>
+      )}
+    </div>
+  );
 };
 
 // -----------------------------------------------------------------------------

@@ -8,7 +8,7 @@ import ChatInterface from './components/ChatInterface';
 import { saveStateToLocalStorage, loadStateFromLocalStorage } from './utils/storage';
 import { getOrGenerateUserId, syncToFirebase, loadFromFirebase } from './services/firebaseService';
 import { Chat } from '@google/genai';
-import { Settings, X, Cpu, Search, Eye, Layout } from 'lucide-react';
+import { Settings, X, Cpu, Search, Eye, Layout, Key } from 'lucide-react';
 
 const MASTER_STORAGE_KEY = 'cosmic_compass_master_v3';
 
@@ -49,10 +49,27 @@ const DEFAULT_STATE: AppState = {
   ],
   outputLanguage: 'Gujarati',
   exSpouseDetails: { name: 'Pankti Patel', dob: '1998-10-17' },
-  enableGoogleSearch: true,
+  enableGoogleSearch: false, // Default to FALSE to save quota tokens
   chatHistory: [],
   visuals: {},
   specialNotes: 'Active 9-5-1 Willpower Axis'
+};
+
+// Safe way to check for environment variable
+const getSafeEnvApiKey = (): string => {
+  try {
+    // @ts-ignore
+    const env = (typeof import.meta !== "undefined" && import.meta.env) || {};
+    if (env.VITE_GEMINI_API_KEY) return env.VITE_GEMINI_API_KEY;
+    if (env.GEMINI_API_KEY) return env.GEMINI_API_KEY;
+
+    // @ts-ignore
+    if (typeof process !== 'undefined' && process?.env) {
+      // @ts-ignore
+      return process.env.VITE_GEMINI_API_KEY || process.env.GEMINI_API_KEY || process.env.API_KEY || '';
+    }
+  } catch (e) { }
+  return '';
 };
 
 const App: React.FC = () => {
@@ -64,13 +81,20 @@ const App: React.FC = () => {
 
   // Settings State
   const [showSettings, setShowSettings] = useState(false);
-  const [selectedModel, setSelectedModel] = useState(() => localStorage.getItem('cosmic_selected_model') || 'gemini-3-flash-preview');
+  const [selectedModel, setSelectedModel] = useState(() => localStorage.getItem('cosmic_selected_model') || 'gemini-1.5-flash');
+
+  // SAFE API KEY HANDLING for Static Hosts
+  const [apiKey, setApiKey] = useState(() => {
+    const stored = localStorage.getItem('cosmic_api_key');
+    if (stored) return stored;
+    return getSafeEnvApiKey();
+  });
 
   const [appState, setAppState] = useState<AppState>(() => {
     return loadStateFromLocalStorage(MASTER_STORAGE_KEY, DEFAULT_STATE);
   });
 
-  const { birthDetails, readingOptions, advancedReadingOptions, lifeEvents, outputLanguage, exSpouseDetails, enableGoogleSearch, chatHistory, visuals, specialNotes } = appState;
+  const { birthDetails, readingOptions, advancedReadingOptions, lifeEvents, outputLanguage, exSpouseDetails, enableGoogleSearch, chatHistory, visuals, specialNotes, frontierParams } = appState;
 
   const [reading, setReading] = useState<string>('');
   const [groundingSources, setGroundingSources] = useState<any[]>([]);
@@ -121,13 +145,14 @@ const App: React.FC = () => {
   useEffect(() => {
     saveStateToLocalStorage(MASTER_STORAGE_KEY, appState);
     if (cloudLockReleased) {
-        const timer = setTimeout(() => triggerSync(appState), 2000);
-        return () => clearTimeout(timer);
+      const timer = setTimeout(() => triggerSync(appState), 2000);
+      return () => clearTimeout(timer);
     }
   }, [appState, triggerSync, cloudLockReleased]);
 
   const saveSettings = () => {
     localStorage.setItem('cosmic_selected_model', selectedModel);
+    localStorage.setItem('cosmic_api_key', apiKey); // Persist API key
     setShowSettings(false);
     setCurrentChatSession(undefined); // Reset chat
   };
@@ -138,33 +163,34 @@ const App: React.FC = () => {
       setChatLoading(true);
       try {
         session = await initializeChatSession(
-            birthDetails, 
-            readingOptions, 
-            advancedReadingOptions, 
-            lifeEvents, 
-            outputLanguage, 
-            chatHistory, 
-            exSpouseDetails, 
-            enableGoogleSearch, 
-            visuals,
-            process.env.API_KEY || '',
-            selectedModel
+          birthDetails,
+          readingOptions,
+          advancedReadingOptions,
+          lifeEvents,
+          outputLanguage,
+          chatHistory,
+          exSpouseDetails,
+          enableGoogleSearch,
+          visuals,
+          frontierParams, // Pass frontierParams
+          apiKey,
+          selectedModel
         );
         setCurrentChatSession(session);
-      } catch (err: any) { 
-        setChatError(err.message); 
-        setChatLoading(false); 
-        return; 
+      } catch (err: any) {
+        setChatError(err.message);
+        setChatLoading(false);
+        return;
       }
     }
-    
+
     const newUserMsg: ChatMessage = { role: 'user', text: message };
     setChatLoading(true);
-    
+
     // Update local state first
     const updatedHistory = [...chatHistory, newUserMsg, { role: 'model' as const, text: '' }];
     setAppState(prev => ({ ...prev, chatHistory: updatedHistory }));
-    
+
     let fullText = '';
     try {
       const stream = sendChatMessage(session, message);
@@ -176,16 +202,21 @@ const App: React.FC = () => {
           return { ...prev, chatHistory: hist };
         });
       }
-      
+
       // Force sync after message completes
       const finalChatHistory = [...chatHistory, newUserMsg, { role: 'model' as const, text: fullText }];
       const finalChatState = { ...appState, chatHistory: finalChatHistory };
       triggerSync(finalChatState);
 
-    } catch (err: any) { 
-      setChatError(err.message); 
-    } finally { 
-      setChatLoading(false); 
+    } catch (err: any) {
+      const errStr = err.toString();
+      if (errStr.includes("429") || errStr.includes("RESOURCE_EXHAUSTED")) {
+        setChatError("Quota Exhausted (429): Please wait 60 seconds or disable Google Search in Settings.");
+      } else {
+        setChatError(err.message);
+      }
+    } finally {
+      setChatLoading(false);
     }
   };
 
@@ -216,21 +247,27 @@ const App: React.FC = () => {
     setGroundingSources([]);
     try {
       const res = await getCombinedReading(
-          birthDetails, 
-          readingOptions, 
-          advancedReadingOptions, 
-          lifeEvents, 
-          outputLanguage, 
-          exSpouseDetails, 
-          enableGoogleSearch, 
-          visuals,
-          process.env.API_KEY || '',
-          selectedModel
+        birthDetails,
+        readingOptions,
+        advancedReadingOptions,
+        lifeEvents,
+        outputLanguage,
+        exSpouseDetails,
+        enableGoogleSearch,
+        visuals,
+        frontierParams,
+        apiKey,
+        selectedModel
       );
       setReading(res.reading);
       setGroundingSources(res.groundingSources || []);
     } catch (err: any) {
-      setError(err.message);
+      const errStr = err.toString();
+      if (errStr.includes("429") || errStr.includes("RESOURCE_EXHAUSTED")) {
+        setError("Quota Exhausted (429): Please wait 60s or disable Google Search in Settings.");
+      } else {
+        setError(err.message);
+      }
     } finally {
       setLoading(false);
     }
@@ -240,9 +277,26 @@ const App: React.FC = () => {
     const file = e.target.files?.[0];
     if (file) {
       const reader = new FileReader();
-      reader.onloadend = () => {
-        const newVisuals = { ...visuals, [type]: reader.result as string };
-        updateAppState({ visuals: newVisuals });
+      reader.onloadend = async () => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          const MAX_WIDTH = 800;
+          let width = img.width;
+          let height = img.height;
+          if (width > MAX_WIDTH) {
+            height *= MAX_WIDTH / width;
+            width = MAX_WIDTH;
+          }
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx?.drawImage(img, 0, 0, width, height);
+          const compressedData = canvas.toDataURL('image/jpeg', 0.7);
+          const newVisuals = { ...visuals, [type]: compressedData };
+          updateAppState({ visuals: newVisuals });
+        };
+        img.src = reader.result as string;
       };
       reader.readAsDataURL(file);
     }
@@ -250,61 +304,73 @@ const App: React.FC = () => {
 
   return (
     <div className="max-w-7xl mx-auto py-12 px-6 pb-24 relative">
-      
+
       {/* Settings Modal */}
       {showSettings && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
           <div className="glass bg-[#0f172a] rounded-3xl p-8 max-w-md w-full border border-white/20 shadow-2xl relative">
-             <button onClick={() => setShowSettings(false)} className="absolute right-4 top-4 text-gray-400 hover:text-white"><X size={24}/></button>
-             <h3 className="text-xl font-serif text-white mb-6 flex items-center gap-2"><Settings size={20} className="text-indigo-400"/> Oracle Configuration</h3>
-             
-             <div className="space-y-6">
+            <button onClick={() => setShowSettings(false)} className="absolute right-4 top-4 text-gray-400 hover:text-white"><X size={24} /></button>
+            <h3 className="text-xl font-serif text-white mb-6 flex items-center gap-2"><Settings size={20} className="text-indigo-400" /> Oracle Configuration</h3>
+
+            <div className="space-y-6">
+              <div>
+                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 block flex items-center gap-2"><Cpu size={12} /> Intelligence Model</label>
+                <select
+                  value={selectedModel}
+                  onChange={e => setSelectedModel(e.target.value)}
+                  className="w-full bg-black/40 border border-white/10 rounded-xl py-3 px-4 text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+                >
+                  <option value="gemini-1.5-flash">Gemini 3 Flash (Faster, Standard)</option>
+                  <option value="gemini-3-pro-preview">Gemini 3 Pro (Higher Reasoning)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 block flex items-center gap-2"><Key size={12} /> Gemini API Key</label>
+                <input
+                  type="password"
+                  value={apiKey}
+                  onChange={e => setApiKey(e.target.value)}
+                  placeholder="Enter your AI Studio API Key..."
+                  className="w-full bg-black/40 border border-white/10 rounded-xl py-3 px-4 text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+                />
+                <p className="text-[9px] text-gray-500 mt-2">Get your key from <a href="https://aistudio.google.com/app/apikey" target="_blank" className="text-indigo-400 underline">AI Studio</a>. Avoid Firebase keys.</p>
+              </div>
+
+              <div className="flex items-center justify-between p-4 bg-white/5 rounded-xl border border-white/5">
                 <div>
-                   <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 block flex items-center gap-2"><Cpu size={12}/> Intelligence Model</label>
-                   <select 
-                      value={selectedModel} 
-                      onChange={e => setSelectedModel(e.target.value)}
-                      className="w-full bg-black/40 border border-white/10 rounded-xl py-3 px-4 text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
-                   >
-                      <option value="gemini-3-flash-preview">Gemini 3 Flash (Faster, Standard)</option>
-                      <option value="gemini-3-pro-preview">Gemini 3 Pro (Higher Reasoning)</option>
-                   </select>
+                  <label className="text-[12px] font-bold text-gray-200 block flex items-center gap-2"><Search size={12} /> Google Search Grounding</label>
+                  <p className="text-[10px] text-gray-500 mt-1">Enhances answers with web data.</p>
                 </div>
-
-                <div className="flex items-center justify-between p-4 bg-white/5 rounded-xl border border-white/5">
-                    <div>
-                       <label className="text-[12px] font-bold text-gray-200 block flex items-center gap-2"><Search size={12}/> Google Search Grounding</label>
-                       <p className="text-[10px] text-gray-500 mt-1">Enhances answers with web data.</p>
-                    </div>
-                    <button 
-                        onClick={() => updateAppState({ enableGoogleSearch: !enableGoogleSearch })} 
-                        className={`w-10 h-6 rounded-full relative transition-all ${enableGoogleSearch ? 'bg-indigo-600' : 'bg-gray-600'}`}
-                    >
-                        <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${enableGoogleSearch ? 'left-5' : 'left-1'}`}></div>
-                    </button>
-                </div>
-
-                <button onClick={saveSettings} className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 rounded-xl text-white font-bold text-sm shadow-lg transition-all">
-                  Save Configuration
+                <button
+                  onClick={() => updateAppState({ enableGoogleSearch: !enableGoogleSearch })}
+                  className={`w-10 h-6 rounded-full relative transition-all ${enableGoogleSearch ? 'bg-indigo-600' : 'bg-gray-600'}`}
+                >
+                  <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${enableGoogleSearch ? 'left-5' : 'left-1'}`}></div>
                 </button>
-             </div>
+              </div>
+
+              <button onClick={saveSettings} className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 rounded-xl text-white font-bold text-sm shadow-lg transition-all">
+                Save Configuration
+              </button>
+            </div>
           </div>
         </div>
       )}
 
       {isRecovering && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 backdrop-blur-2xl">
-           <div className="text-center">
-              <div className="w-16 h-16 border-t-4 border-indigo-500 rounded-full animate-spin mx-auto mb-6"></div>
-              <p className="text-indigo-400 font-bold uppercase tracking-[0.4em] text-xs">Accessing Akashic Cloud...</p>
-           </div>
+          <div className="text-center">
+            <div className="w-16 h-16 border-t-4 border-indigo-500 rounded-full animate-spin mx-auto mb-6"></div>
+            <p className="text-indigo-400 font-bold uppercase tracking-[0.4em] text-xs">Accessing Akashic Cloud...</p>
+          </div>
         </div>
       )}
 
       <header className="flex flex-col items-center mb-12">
         <div className="relative mb-4">
-            <div className="absolute inset-0 blur-2xl bg-indigo-500/20 rounded-full"></div>
-            <h1 className="relative font-serif text-5xl md:text-6xl text-white text-center bg-clip-text text-transparent bg-gradient-to-b from-white via-indigo-200 to-indigo-500 font-bold tracking-tight py-2">Cosmic Compass</h1>
+          <div className="absolute inset-0 blur-2xl bg-indigo-500/20 rounded-full"></div>
+          <h1 className="relative font-serif text-5xl md:text-6xl text-white text-center bg-clip-text text-transparent bg-gradient-to-b from-white via-indigo-200 to-indigo-500 font-bold tracking-tight py-2">Cosmic Compass</h1>
         </div>
         <div className="flex items-center space-x-4">
           <div className={`flex items-center space-x-2 px-4 py-1.5 rounded-full border transition-all ${isFirebaseSynced ? 'bg-indigo-500/10 border-indigo-500/30' : 'bg-amber-500/10 border-amber-500/30'}`}>
@@ -318,7 +384,7 @@ const App: React.FC = () => {
             <option value="Gujarati">Gujarati</option>
           </select>
           <button onClick={() => setShowSettings(true)} className="w-8 h-8 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-gray-400 hover:text-white hover:bg-indigo-500/20 transition-all">
-             <Settings size={14} />
+            <Settings size={14} />
           </button>
         </div>
       </header>
@@ -327,8 +393,8 @@ const App: React.FC = () => {
       <div className="flex justify-center mb-12">
         <div className="glass p-1.5 rounded-2xl flex space-x-2 shadow-2xl border border-white/10">
           <button onClick={() => setIsChatMode(false)} className={`px-10 py-3 rounded-xl font-bold transition-all ${!isChatMode ? 'bg-indigo-600 text-white shadow-indigo-500/20 shadow-lg' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}>Profile Mandali</button>
-          <button 
-            onClick={() => setIsChatMode(true)} 
+          <button
+            onClick={() => setIsChatMode(true)}
             className={`px-10 py-3 rounded-xl font-bold transition-all relative ${isChatMode ? 'bg-purple-600 text-white shadow-purple-500/20 shadow-lg' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}
           >
             Universal Oracle Chat {chatHistory.length > 0 && <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full text-[9px] flex items-center justify-center border-2 border-[#020617] font-black">{chatHistory.length}</span>}
@@ -402,10 +468,10 @@ const App: React.FC = () => {
           </div>
 
           <div className="lg:col-span-4 space-y-6">
-            <button 
-                onClick={handleGenerateReading} 
-                disabled={loading} 
-                className="w-full relative py-12 rounded-[2.5rem] bg-indigo-600 hover:bg-indigo-500 text-white font-bold shadow-2xl transition-all border border-white/20"
+            <button
+              onClick={handleGenerateReading}
+              disabled={loading}
+              className="w-full relative py-12 rounded-[2.5rem] bg-indigo-600 hover:bg-indigo-500 text-white font-bold shadow-2xl transition-all border border-white/20"
             >
               {loading ? "Aligning Navagraha..." : "Generate Cosmic Synthesis"}
             </button>
@@ -446,34 +512,34 @@ const App: React.FC = () => {
                 )}
               </div>
             )}
-            
+
             <div className="grid grid-cols-2 gap-4">
-               <label className="aspect-square glass rounded-3xl flex flex-col items-center justify-center cursor-pointer border-white/10 hover:border-indigo-500/50 transition-all overflow-hidden relative group">
-                  <input type="file" className="hidden" accept="image/*" onChange={handleFileUpload('face')} />
-                  {visuals?.face ? <img src={visuals.face} className="w-full h-full object-cover" /> : <><Eye size={32} className="text-indigo-400 mb-2 group-hover:scale-110 transition-transform"/><span className="text-[10px] font-black uppercase tracking-widest text-gray-500">Face Scan</span></>}
-               </label>
-               <label className="aspect-square glass rounded-3xl flex flex-col items-center justify-center cursor-pointer border-white/10 hover:border-indigo-500/50 transition-all overflow-hidden relative group">
-                  <input type="file" className="hidden" accept="image/*" onChange={handleFileUpload('palm')} />
-                  {visuals?.palm ? <img src={visuals.palm} className="w-full h-full object-cover" /> : <><Layout size={32} className="text-indigo-400 mb-2 group-hover:scale-110 transition-transform"/><span className="text-[10px] font-black uppercase tracking-widest text-gray-500">Palm Pattern</span></>}
-               </label>
+              <label className="aspect-square glass rounded-3xl flex flex-col items-center justify-center cursor-pointer border-white/10 hover:border-indigo-500/50 transition-all overflow-hidden relative group">
+                <input type="file" className="hidden" accept="image/*" onChange={handleFileUpload('face')} />
+                {visuals?.face ? <img src={visuals.face} className="w-full h-full object-cover" /> : <><Eye size={32} className="text-indigo-400 mb-2 group-hover:scale-110 transition-transform" /><span className="text-[10px] font-black uppercase tracking-widest text-gray-500">Face Scan</span></>}
+              </label>
+              <label className="aspect-square glass rounded-3xl flex flex-col items-center justify-center cursor-pointer border-white/10 hover:border-indigo-500/50 transition-all overflow-hidden relative group">
+                <input type="file" className="hidden" accept="image/*" onChange={handleFileUpload('palm')} />
+                {visuals?.palm ? <img src={visuals.palm} className="w-full h-full object-cover" /> : <><Layout size={32} className="text-indigo-400 mb-2 group-hover:scale-110 transition-transform" /><span className="text-[10px] font-black uppercase tracking-widest text-gray-500">Palm Pattern</span></>}
+              </label>
             </div>
 
-            <button 
-                onClick={() => setIsChatMode(true)} 
-                className="w-full py-5 rounded-2xl bg-white/5 hover:bg-white/10 text-indigo-400 font-bold text-xs uppercase tracking-widest border border-indigo-500/20 transition-all shadow-xl"
+            <button
+              onClick={() => setIsChatMode(true)}
+              className="w-full py-5 rounded-2xl bg-white/5 hover:bg-white/10 text-indigo-400 font-bold text-xs uppercase tracking-widest border border-indigo-500/20 transition-all shadow-xl"
             >
               Consult Universal Oracle Chat
             </button>
           </div>
         </div>
       ) : (
-        <ChatInterface 
-          chatHistory={chatHistory} 
-          onSendMessage={handleSendMessage} 
-          loading={chatLoading} 
-          error={chatError} 
-          onBackToForm={() => setIsChatMode(false)} 
-          onClearChat={() => { if(window.confirm("Clear Oracle data?")) { updateAppState({ chatHistory: [] }); setCurrentChatSession(undefined); }}} 
+        <ChatInterface
+          chatHistory={chatHistory}
+          onSendMessage={handleSendMessage}
+          loading={chatLoading}
+          error={chatError}
+          onBackToForm={() => setIsChatMode(false)}
+          onClearChat={() => { if (window.confirm("Clear Oracle data?")) { updateAppState({ chatHistory: [] }); setCurrentChatSession(undefined); } }}
           suggestedQuestions={["Explain my 9-5-1 potential?", "My career roadmap 2030-2050?", "How do the 9 planets affect me in Germany?"]}
           isSyncing={isSyncing}
           isFirebaseSynced={isFirebaseSynced}
@@ -482,7 +548,7 @@ const App: React.FC = () => {
 
       {/* Persistent Floating Chat FAB */}
       {!isChatMode && (
-        <button 
+        <button
           onClick={() => setIsChatMode(true)}
           className="fixed bottom-10 right-10 w-16 h-16 bg-gradient-to-tr from-indigo-600 to-purple-600 rounded-full flex items-center justify-center text-white shadow-2xl hover:scale-110 active:scale-95 transition-all z-50 group"
         >
