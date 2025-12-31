@@ -244,7 +244,7 @@ async function getCombinedReading(
 ) {
   if (!apiKey || !apiKey.trim()) throw new Error("API Key is missing. Please add it in Settings.");
 
-  const genAI = new GoogleGenAI(apiKey.trim());
+  const genAI = new GoogleGenAI({ apiKey: apiKey.trim() });
   const modelInstance = genAI.getGenerativeModel({
     model: model,
     tools: enableGoogleSearch ? [{ googleSearch: {} }] : []
@@ -308,7 +308,7 @@ async function initializeChatSession(
 ) {
   if (!apiKey || !apiKey.trim()) throw new Error("API Key is missing. Please add it in Settings.");
 
-  const genAI = new GoogleGenAI(apiKey.trim());
+  const genAI = new GoogleGenAI({ apiKey: apiKey.trim() });
   const systemInstruction = buildAstrologyPrompt(birthDetails, options, advancedOptions, lifeEvents, outputLanguage, exSpouseDetails, visuals, frontierParams, true);
 
   const geminiHistory = history.map(msg => ({
