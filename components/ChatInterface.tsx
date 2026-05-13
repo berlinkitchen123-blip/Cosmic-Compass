@@ -126,13 +126,13 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
                 className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-in fade-in slide-in-from-bottom-2 duration-300`}
               >
                 <div
-                  className={`max-w-[85%] px-5 py-4 rounded-2xl shadow-lg border ${
+                  className={`max-w-[85%] px-5 py-4 rounded-2xl shadow-xl border ${
                     msg.role === 'user'
-                      ? 'bg-indigo-600/30 border-indigo-500/40 text-indigo-50'
-                      : 'bg-white/5 border-white/10 text-gray-200'
+                      ? 'bg-indigo-600/70 border-indigo-500/80 text-white'
+                      : 'bg-white/15 border-white/30 text-white'
                   }`}
                 >
-                  <p className="text-sm leading-relaxed whitespace-pre-wrap font-medium">{msg.text || (loading && index === chatHistory.length - 1 ? '...' : '')}</p>
+                  <p className="text-base leading-relaxed whitespace-pre-wrap font-semibold tracking-normal">{msg.text || (loading && index === chatHistory.length - 1 ? '...' : '')}</p>
                 </div>
               </div>
             ))}
@@ -164,7 +164,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
                 onChange={(e) => setCurrentInput(e.target.value)}
                 onKeyDown={handleKeyDown}
                 placeholder="Ask about your destiny, 9-5-1 potential, or 2030 projections..."
-                className="w-full bg-black/40 border border-white/10 rounded-2xl py-4 pl-6 pr-14 text-sm text-white placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all"
+                className="w-full bg-black/40 border border-white/10 rounded-2xl py-4 pl-6 pr-14 text-base text-white placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all"
                 disabled={loading}
               />
               <button

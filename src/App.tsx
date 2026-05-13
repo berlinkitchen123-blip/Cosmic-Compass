@@ -1,15 +1,30 @@
-import React, { useState, useCallback, useEffect, useRef } from 'react';
-import { BirthDetails, ReadingOptions, AdvancedReadingOptions, LifeEvent, SpouseDetails, ApiResponse, ChatMessage, Visuals } from './types';
-import { getCombinedReading, initializeChatSession, sendChatMessage } from './services/geminiService';
-import InputField from './components/InputField';
-import CheckboxField from './components/CheckboxField';
-import ChatInterface from './components/ChatInterface';
-import { saveStateToLocalStorage, loadStateFromLocalStorage } from './utils/storage';
-import { getOrGenerateUserId, syncToFirebase, loadFromFirebase } from './services/firebaseService';
-import { Chat } from '@google/genai';
-import { Settings, X, Cpu, Search, Eye, Layout } from 'lucide-react';
 
-const MASTER_STORAGE_KEY = 'cosmic_compass_master_v3';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
+import { BirthDetails, ReadingOptions, AdvancedReadingOptions, LifeEvent, SpouseDetails, ApiResponse, ChatMessage, Visuals } from '../types';
+import { getCombinedReading, initializeChatSession, sendChatMessage } from '../services/geminiService';
+import { fetchPlanetaryData } from '../services/astrologyService';
+import InputField from '../components/InputField';
+import CheckboxField from '../components/CheckboxField';
+import ChatInterface from '../components/ChatInterface';
+import CameraCapture from '../components/CameraCapture';
+// Removed CHAT_HISTORY_KEY related imports and logic, added saveChatToFirebase
+import { saveStateToLocalStorage, loadStateFromLocalStorage, removeFromLocalStorage } from '../utils/storage';
+import { getOrGenerateUserId, syncToFirebase, loadFromFirebase, saveChatToFirebase } from '../services/firebaseService';
+import { Chat } from '@google/genai';
+import { Settings, X, Cpu, Search, Eye, Layout, RefreshCw, Key, AlertTriangle, ExternalLink, Globe, Sparkles, Fingerprint } from 'lucide-react';
+
+// VERSION 14.4 - GRAND UNIFIED SCIENCE UPGRADE
+const MASTER_STORAGE_KEY = 'cosmic_compass_master_v14_4';
+
+// Known Firebase Key Signature to detect user error
+const KNOWN_FIREBASE_KEY_PART = "AIzaSyDrFjYv2";
+
+function isFirebaseKey(key: string) {
+    if (!key) return false;
+    const cleanKey = key.trim();
+    // Check if it matches the pattern of the firebase key used in config
+    return cleanKey.includes(KNOWN_FIREBASE_KEY_PART);
+}
 
 interface AppState {
   birthDetails: BirthDetails;
@@ -22,6 +37,7 @@ interface AppState {
   chatHistory: ChatMessage[];
   visuals: Visuals;
   specialNotes: string;
+  realAstrologyData?: any;
 }
 
 const PLANETS = ['Sun', 'Moon', 'Mars', 'Mercury', 'Jupiter', 'Venus', 'Saturn', 'Rahu', 'Ketu'];
@@ -37,21 +53,31 @@ const DEFAULT_STATE: AppState = {
     { date: '2017-06-10', description: 'Graduation and Entry into Professional Career', planet: 'Sun' },
     { date: '2019-03-12', description: 'Shift in career focus and location', planet: 'Mars' },
     { date: '2021-02-14', description: 'Significant spiritual realization and lifestyle change', planet: 'Moon' },
-    { date: '2021-08-24', description: 'Health crisis: Platelets dropped to 10k (Karmic Node)', planet: 'Saturn' },
+    { date: '2021-08-24', description: 'Admitted: Platelets down to 10,000 (Health Crisis)', planet: 'Saturn' },
     { date: '2021-12-10', description: 'Engagement ceremony with Pankti Patel', planet: 'Venus' },
-    { date: '2022-01-04', description: 'Married Pankti Patel (Astro Union)', planet: 'Venus' },
+    { date: '2022-01-04', description: 'Married to Pankti Patel', planet: 'Venus' },
     { date: '2023-05-15', description: 'Significant career advancement/promotion', planet: 'Mercury' },
+    { date: '2023-10-20', description: 'Admitted: Excess lead level 269ug/ml (Toxicology)', planet: 'Rahu' },
     { date: '2024-06-20', description: 'Preparation for International Migration', planet: 'Rahu' },
     { date: '2024-11-06', description: 'Moved to Germany (Transcontinental Transit)', planet: 'Rahu' },
-    { date: '2025-01-01', description: 'Stable residency and new professional phase', planet: 'Saturn' },
-    { date: '2025-05-01', description: 'Future Growth: Family and Wealth Focus', planet: 'Jupiter' }
-  ],
+    { date: '2024-12-04', description: 'Joined Amazon as a driver', planet: 'Saturn' },
+    { date: '2025-01-04', description: 'Left Amazon job (Small Accident)', planet: 'Ketu' },
+    { date: '2025-01-17', description: 'Driving trial at Bellabona', planet: 'Mercury' },
+    { date: '2025-01-20', description: 'Joined Bellabona as driver', planet: 'Saturn' },
+    { date: '2025-01-21', description: 'Theft: Bag stolen with Passport/DL', planet: 'Rahu' },
+    { date: '2025-05-05', description: 'Logistics Manager at Bellabona (Management Role)', planet: 'Sun' },
+    { date: '2025-08-08', description: 'Shifted to new rental house', planet: 'Moon' },
+    { date: '2025-10-17', description: 'Divorce from Pankti finalized', planet: 'Ketu' },
+    { date: '2025-11-17', description: 'Visa extended till May 2027', planet: 'Jupiter' },
+    { date: '2025-12-20', description: 'MacBook purchase (Tax paid by company)', planet: 'Venus' }
+  ].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()),
   outputLanguage: 'Gujarati',
   exSpouseDetails: { name: 'Pankti Patel', dob: '1998-10-17' },
   enableGoogleSearch: true,
   chatHistory: [],
   visuals: {},
-  specialNotes: 'Active 9-5-1 Willpower Axis'
+  specialNotes: 'Active 9-5-1 Willpower Axis',
+  realAstrologyData: null
 };
 
 const App: React.FC = () => {
@@ -61,15 +87,28 @@ const App: React.FC = () => {
   const [isRecovering, setIsRecovering] = useState(true);
   const [cloudLockReleased, setCloudLockReleased] = useState(false);
 
-  // Settings State
+  // Settings & API Key State
   const [showSettings, setShowSettings] = useState(false);
-  const [selectedModel, setSelectedModel] = useState(() => localStorage.getItem('cosmic_selected_model') || 'gemini-3-flash-preview');
+  const [selectedModel, setSelectedModel] = useState(() => localStorage.getItem('cosmic_selected_model') || 'gemini-3.1-pro-preview');
+  
+  // Initialize API Key from LocalStorage
+  const [apiKey, setApiKey] = useState(() => {
+    // Priority: LocalStorage -> Process Env (if valid)
+    const stored = localStorage.getItem('cosmic_api_key');
+    if (stored) return stored;
+    return process.env.GEMINI_API_KEY_1 && !isFirebaseKey(process.env.GEMINI_API_KEY_1) ? process.env.GEMINI_API_KEY_1 : '';
+  });
+  const [keyError, setKeyError] = useState<string | null>(null);
 
+  // Load App State
   const [appState, setAppState] = useState<AppState>(() => {
-    return loadStateFromLocalStorage(MASTER_STORAGE_KEY, DEFAULT_STATE);
+    const mainState = loadStateFromLocalStorage(MASTER_STORAGE_KEY, DEFAULT_STATE);
+    // FORCE EMPTY CHAT ON INIT - We now rely strictly on Cloud/Firebase for chat history
+    // This prevents stale local data and respects "not local storage" request
+    return { ...mainState, chatHistory: [] };
   });
 
-  const { birthDetails, readingOptions, advancedReadingOptions, lifeEvents, outputLanguage, exSpouseDetails, enableGoogleSearch, chatHistory, visuals, specialNotes } = appState;
+  const { birthDetails, readingOptions, advancedReadingOptions, lifeEvents, outputLanguage, exSpouseDetails, enableGoogleSearch, chatHistory, visuals, specialNotes, realAstrologyData } = appState;
 
   const [reading, setReading] = useState<string>('');
   const [groundingSources, setGroundingSources] = useState<any[]>([]);
@@ -80,19 +119,33 @@ const App: React.FC = () => {
   const [chatLoading, setChatLoading] = useState<boolean>(false);
   const [chatError, setChatError] = useState<string | null>(null);
 
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [activeUploadSlot, setActiveUploadSlot] = useState<keyof Visuals | null>(null);
+  const [activeCamera, setActiveCamera] = useState<'face' | 'palm' | null>(null);
 
-  // Recovery effect from cloud
+  // 1. API Key Validation Effect
+  useEffect(() => {
+    if (apiKey && isFirebaseKey(apiKey)) {
+        setKeyError("CRITICAL ERROR: You entered the Firebase API Key. This will not work with Gemini AI. Please enter a valid Gemini API Key starting with 'AIza' (but not the Firebase one).");
+        setShowSettings(true);
+    } else {
+        setKeyError(null);
+    }
+  }, [apiKey]);
+
+  // 2. Recovery from Firebase (This is where chat history is loaded)
   useEffect(() => {
     const recoverData = async () => {
       try {
         const remoteData = await loadFromFirebase(userId);
         if (remoteData) {
+          const isDefaultUser = remoteData.birthDetails?.name?.toLowerCase().includes('harshkumar');
+          let resolvedLifeEvents = isDefaultUser ? DEFAULT_STATE.lifeEvents : (remoteData.lifeEvents || DEFAULT_STATE.lifeEvents);
+
           setAppState(prev => ({
             ...prev,
             ...remoteData,
-            chatHistory: remoteData.chatHistory || prev.chatHistory,
+            lifeEvents: resolvedLifeEvents,
+            // Ensure we use the remote chat history
+            chatHistory: remoteData.chatHistory || [],
             visuals: remoteData.visuals || prev.visuals
           }));
           setIsFirebaseSynced(true);
@@ -116,9 +169,16 @@ const App: React.FC = () => {
     return success;
   }, [userId, cloudLockReleased]);
 
-  // Regular auto-sync debounce (2s)
+  // 3. Robust Auto-Save (EXCLUDING CHAT FROM LOCAL STORAGE)
   useEffect(() => {
-    saveStateToLocalStorage(MASTER_STORAGE_KEY, appState);
+    // Create a copy of state but with empty chat history for local storage persistence
+    // This satisfies the "not local storage" requirement for chat
+    const stateToPersist = { ...appState, chatHistory: [] };
+    saveStateToLocalStorage(MASTER_STORAGE_KEY, stateToPersist);
+    
+    // Clean up old local storage key if it exists
+    removeFromLocalStorage('cosmic_compass_chat_archive');
+
     if (cloudLockReleased) {
         const timer = setTimeout(() => triggerSync(appState), 2000);
         return () => clearTimeout(timer);
@@ -126,16 +186,34 @@ const App: React.FC = () => {
   }, [appState, triggerSync, cloudLockReleased]);
 
   const saveSettings = () => {
+    if (isFirebaseKey(apiKey)) {
+        setKeyError("Cannot save settings: Invalid API Key detected.");
+        return;
+    }
     localStorage.setItem('cosmic_selected_model', selectedModel);
+    localStorage.setItem('cosmic_api_key', apiKey); // Persist API key
     setShowSettings(false);
-    setCurrentChatSession(undefined); // Reset chat
+    setCurrentChatSession(undefined); // Reset chat session to force re-init with new key
   };
 
   const handleSendMessage = async (message: string) => {
+    // Validation before sending
+    if (!apiKey || isFirebaseKey(apiKey)) {
+        setChatError("Invalid or Missing API Key. Please configure in Settings.");
+        setShowSettings(true);
+        return;
+    }
+
     let session = currentChatSession;
     if (!session) {
       setChatLoading(true);
       try {
+        let astroData = realAstrologyData;
+        if (!astroData) {
+          astroData = await fetchPlanetaryData(birthDetails, apiKey);
+          updateAppState({ realAstrologyData: astroData });
+        }
+
         session = await initializeChatSession(
             birthDetails, 
             readingOptions, 
@@ -146,8 +224,9 @@ const App: React.FC = () => {
             exSpouseDetails, 
             enableGoogleSearch, 
             visuals,
-            process.env.API_KEY || '',
-            selectedModel
+            apiKey, // Use state apiKey
+            selectedModel,
+            astroData
         );
         setCurrentChatSession(session);
       } catch (err: any) { 
@@ -159,10 +238,14 @@ const App: React.FC = () => {
     
     const newUserMsg: ChatMessage = { role: 'user', text: message };
     setChatLoading(true);
+    setChatError(null);
     
-    // Update local state first
-    const updatedHistory = [...chatHistory, newUserMsg, { role: 'model' as const, text: '' }];
-    setAppState(prev => ({ ...prev, chatHistory: updatedHistory }));
+    // 1. Optimistic Update Local State
+    const updatedHistoryWithUser = [...chatHistory, newUserMsg];
+    // 2. Save User Message to Firebase Immediately (Cloud Persistence)
+    saveChatToFirebase(userId, updatedHistoryWithUser);
+
+    setAppState(prev => ({ ...prev, chatHistory: [...updatedHistoryWithUser, { role: 'model' as const, text: '' }] }));
     
     let fullText = '';
     try {
@@ -176,13 +259,22 @@ const App: React.FC = () => {
         });
       }
       
-      // Force sync after message completes
       const finalChatHistory = [...chatHistory, newUserMsg, { role: 'model' as const, text: fullText }];
+      
+      // 3. Save Final Model Response to Firebase Immediately (Cloud Persistence)
+      // This bypasses the debounced triggerSync for immediate reliability
+      saveChatToFirebase(userId, finalChatHistory);
+      
+      // Also trigger full sync to ensure consistency
       const finalChatState = { ...appState, chatHistory: finalChatHistory };
       triggerSync(finalChatState);
 
     } catch (err: any) { 
       setChatError(err.message); 
+      // If error implies permission, open settings
+      if (err.message && (err.message.includes('403') || err.message.includes('API key'))) {
+          setShowSettings(true);
+      }
     } finally { 
       setChatLoading(false); 
     }
@@ -209,11 +301,29 @@ const App: React.FC = () => {
     updateAppState({ lifeEvents: newEvents });
   };
 
+  const handleResetEvents = () => {
+    if (window.confirm("Reset timeline to the full Master Timeline? This will restore all 23 historical and future events.")) {
+        updateAppState({ lifeEvents: DEFAULT_STATE.lifeEvents });
+    }
+  };
+
   const handleGenerateReading = async () => {
+    if (!apiKey || isFirebaseKey(apiKey)) {
+        setError("Invalid or Missing API Key. Please configure in Settings.");
+        setShowSettings(true);
+        return;
+    }
+
     setLoading(true);
     setError(null);
     setGroundingSources([]);
     try {
+      let astroData = realAstrologyData;
+      if (!astroData) {
+        astroData = await fetchPlanetaryData(birthDetails, apiKey);
+        updateAppState({ realAstrologyData: astroData });
+      }
+
       const res = await getCombinedReading(
           birthDetails, 
           readingOptions, 
@@ -223,8 +333,9 @@ const App: React.FC = () => {
           exSpouseDetails, 
           enableGoogleSearch, 
           visuals,
-          process.env.API_KEY || '',
-          selectedModel
+          apiKey, // Use state apiKey
+          selectedModel,
+          astroData
       );
       setReading(res.reading);
       setGroundingSources(res.groundingSources || []);
@@ -232,18 +343,6 @@ const App: React.FC = () => {
       setError(err.message);
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handleFileUpload = (type: 'face' | 'palm') => (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const newVisuals = { ...visuals, [type]: reader.result as string };
-        updateAppState({ visuals: newVisuals });
-      };
-      reader.readAsDataURL(file);
     }
   };
 
@@ -255,25 +354,50 @@ const App: React.FC = () => {
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
           <div className="glass bg-[#0f172a] rounded-3xl p-8 max-w-md w-full border border-white/20 shadow-2xl relative">
              <button onClick={() => setShowSettings(false)} className="absolute right-4 top-4 text-gray-400 hover:text-white"><X size={24}/></button>
-             <h3 className="text-xl font-serif text-white mb-6 flex items-center gap-2"><Settings size={20} className="text-indigo-400"/> Oracle Configuration</h3>
+             <h3 className="text-xl font-serif text-white mb-6 flex items-center gap-2"><Settings size={20} className="text-indigo-400"/> System Configuration</h3>
              
              <div className="space-y-6">
+                
+                {/* API Key Section */}
                 <div>
-                   <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 block flex items-center gap-2"><Cpu size={12}/> Intelligence Model</label>
+                   <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 block flex items-center gap-2"><Key size={12}/> Gemini API Key</label>
+                   {keyError && (
+                     <div className="bg-red-900/40 border border-red-500/50 p-3 rounded-xl mb-3 flex items-start gap-2">
+                        <AlertTriangle className="text-red-400 shrink-0 mt-0.5" size={14}/>
+                        <p className="text-[10px] text-red-200 leading-snug">{keyError}</p>
+                     </div>
+                   )}
+                   <input 
+                      type="password"
+                      value={apiKey}
+                      onChange={(e) => setApiKey(e.target.value)}
+                      placeholder="Paste Gemini API Key (AIza...)"
+                      className={`w-full bg-black/40 border rounded-xl py-3 px-4 text-white text-sm focus:outline-none focus:ring-2 transition-all ${keyError ? 'border-red-500 focus:ring-red-500/50' : 'border-white/10 focus:ring-indigo-500/50'}`}
+                   />
+                   <div className="mt-2 flex justify-between items-center">
+                     <p className="text-[9px] text-gray-500">Key is stored locally on your device.</p>
+                     <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" className="flex items-center text-[9px] text-indigo-400 hover:text-indigo-300 font-bold">
+                        Get Key <ExternalLink size={10} className="ml-1"/>
+                     </a>
+                   </div>
+                </div>
+
+                <div>
+                   <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 block flex items-center gap-2"><Cpu size={12}/> AI Core</label>
                    <select 
                       value={selectedModel} 
                       onChange={e => setSelectedModel(e.target.value)}
                       className="w-full bg-black/40 border border-white/10 rounded-xl py-3 px-4 text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
                    >
-                      <option value="gemini-3-flash-preview">Gemini 3 Flash (Faster, Standard)</option>
-                      <option value="gemini-3-pro-preview">Gemini 3 Pro (Higher Reasoning)</option>
+                      <option value="gemini-3.1-8b-preview">Gemini 3.1 8B (Fast Inference)</option>
+                      <option value="gemini-3.1-pro-preview">Gemini 3.1 Pro (Deep Reasoning)</option>
                    </select>
                 </div>
 
                 <div className="flex items-center justify-between p-4 bg-white/5 rounded-xl border border-white/5">
                     <div>
-                       <label className="text-[12px] font-bold text-gray-200 block flex items-center gap-2"><Search size={12}/> Google Search Grounding</label>
-                       <p className="text-[10px] text-gray-500 mt-1">Enhances answers with web data.</p>
+                       <label className="text-[12px] font-bold text-gray-200 block flex items-center gap-2"><Search size={12}/> Global Data Uplink</label>
+                       <p className="text-[10px] text-gray-500 mt-1">Connects to live web data (NASA/News).</p>
                     </div>
                     <button 
                         onClick={() => updateAppState({ enableGoogleSearch: !enableGoogleSearch })} 
@@ -283,7 +407,11 @@ const App: React.FC = () => {
                     </button>
                 </div>
 
-                <button onClick={saveSettings} className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 rounded-xl text-white font-bold text-sm shadow-lg transition-all">
+                <button 
+                    onClick={saveSettings} 
+                    disabled={!!keyError || !apiKey}
+                    className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 disabled:bg-gray-700 disabled:cursor-not-allowed rounded-xl text-white font-bold text-sm shadow-lg transition-all"
+                >
                   Save Configuration
                 </button>
              </div>
@@ -295,7 +423,7 @@ const App: React.FC = () => {
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 backdrop-blur-2xl">
            <div className="text-center">
               <div className="w-16 h-16 border-t-4 border-indigo-500 rounded-full animate-spin mx-auto mb-6"></div>
-              <p className="text-indigo-400 font-bold uppercase tracking-[0.4em] text-xs">Accessing Akashic Cloud...</p>
+              <p className="text-indigo-400 font-bold uppercase tracking-[0.4em] text-xs">Calibrating Reality Engine...</p>
            </div>
         </div>
       )}
@@ -316,7 +444,7 @@ const App: React.FC = () => {
             <option value="English">English</option>
             <option value="Gujarati">Gujarati</option>
           </select>
-          <button onClick={() => setShowSettings(true)} className="w-8 h-8 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-gray-400 hover:text-white hover:bg-indigo-500/20 transition-all">
+          <button onClick={() => setShowSettings(true)} className={`w-8 h-8 rounded-full border flex items-center justify-center transition-all ${!apiKey ? 'bg-red-500/20 border-red-500 text-red-200 animate-pulse' : 'bg-white/5 border-white/10 text-gray-400 hover:text-white hover:bg-indigo-500/20'}`}>
              <Settings size={14} />
           </button>
         </div>
@@ -356,11 +484,11 @@ const App: React.FC = () => {
             <section className="glass rounded-[2rem] p-8 glow-border">
               <h2 className="font-serif text-2xl text-white mb-6 flex items-center space-x-3">
                 <span className="text-amber-400">⧉</span>
-                <span>9-5-1 Axis Analysis</span>
+                <span>Multi-Dimensional Matrix</span>
               </h2>
               <div className="grid grid-cols-3 gap-2 aspect-square max-w-[180px] mx-auto mb-6 p-2 bg-black/40 rounded-2xl border border-white/10">
                 {[4, 9, 2, 3, 5, 7, 8, 1, 6].map((num) => {
-                  const isActive = [9, 5, 1].includes(num);
+                  const isActive = [9, 5, 1].includes(num); // Keep highlighting specific Willpower line but show full grid context
                   return (
                     <div key={num} className={`flex items-center justify-center text-sm font-black rounded-lg transition-all ${isActive ? 'bg-indigo-600 text-white shadow-[0_0_15px_rgba(79,70,229,0.5)] border-indigo-400 border' : 'bg-white/5 text-gray-700'}`}>
                       {num}
@@ -368,7 +496,7 @@ const App: React.FC = () => {
                   );
                 })}
               </div>
-              <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest text-center">Willpower Line Visualization</p>
+              <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest text-center">Lo Shu & Numerology Grid</p>
             </section>
           </div>
 
@@ -377,9 +505,18 @@ const App: React.FC = () => {
               <div className="flex justify-between items-center mb-6">
                 <h2 className="font-serif text-2xl text-white flex items-center space-x-3">
                   <span className="text-amber-400">⏳</span>
-                  <span>Navagraha Nodes</span>
+                  <span>Karmic Timeline</span>
                 </h2>
-                <button onClick={handleAddEvent} className="w-10 h-10 rounded-full bg-indigo-600 text-white flex items-center justify-center hover:bg-indigo-500 transition-all shadow-xl">+</button>
+                <div className="flex gap-2">
+                    <button 
+                        onClick={handleResetEvents} 
+                        className="w-8 h-8 rounded-full bg-white/5 hover:bg-white/20 text-gray-300 flex items-center justify-center transition-all"
+                        title="Reset to Original 14 Events"
+                    >
+                        <RefreshCw size={14} />
+                    </button>
+                    <button onClick={handleAddEvent} className="w-10 h-10 rounded-full bg-indigo-600 text-white flex items-center justify-center hover:bg-indigo-500 transition-all shadow-xl">+</button>
+                </div>
               </div>
               <div className="space-y-4 overflow-y-auto custom-scrollbar pr-2 flex-1">
                 {lifeEvents.map((event, i) => (
@@ -393,7 +530,13 @@ const App: React.FC = () => {
                       <button onClick={() => handleRemoveEvent(i)} className="text-gray-600 hover:text-red-400 transition-all opacity-0 group-hover:opacity-100">×</button>
                     </div>
                     <textarea value={event.description} onChange={(e) => handleUpdateEvent(i, 'description', e.target.value)} className="bg-transparent text-gray-200 text-xs w-full resize-none outline-none" rows={2} placeholder="Karmic event..." />
-                    <div className="text-[9px] text-indigo-400/60 font-black mt-1">{event.date}</div>
+                    <input 
+                        type="date" 
+                        value={event.date} 
+                        onChange={(e) => handleUpdateEvent(i, 'date', e.target.value)} 
+                        className="bg-transparent text-[9px] text-indigo-400 font-black mt-1 outline-none border-none p-0 focus:ring-0 cursor-pointer w-full" 
+                        style={{ colorScheme: 'dark' }}
+                    />
                   </div>
                 ))}
               </div>
@@ -404,13 +547,17 @@ const App: React.FC = () => {
             <button 
                 onClick={handleGenerateReading} 
                 disabled={loading} 
-                className="w-full relative py-12 rounded-[2.5rem] bg-indigo-600 hover:bg-indigo-500 text-white font-bold shadow-2xl transition-all border border-white/20"
+                className="w-full relative py-12 rounded-[2.5rem] bg-indigo-600 hover:bg-indigo-500 text-white font-bold shadow-2xl transition-all border border-white/20 overflow-hidden group"
             >
-              {loading ? "Aligning Navagraha..." : "Generate Cosmic Synthesis"}
+               <div className="absolute inset-0 bg-gradient-to-r from-indigo-600 via-purple-600 to-indigo-600 animate-gradient-x"></div>
+               <span className="relative z-10 flex items-center justify-center gap-2">
+                 {loading ? <RefreshCw className="animate-spin" size={20}/> : <Sparkles size={20}/>}
+                 {loading ? "Synthesizing All Sciences..." : "Grand Unified Analysis"}
+               </span>
             </button>
             {reading && (
               <div className="glass rounded-[2rem] p-8 border border-white/10 overflow-y-auto max-h-[600px] custom-scrollbar">
-                <div className="text-gray-200 text-sm leading-relaxed whitespace-pre-wrap mb-6">{reading}</div>
+                <div className="text-white text-base leading-relaxed whitespace-pre-wrap mb-6 font-medium">{reading}</div>
                 {groundingSources.length > 0 && (
                   <div className="mt-8 pt-6 border-t border-white/10">
                     <p className="text-[10px] uppercase tracking-widest text-indigo-400 font-black mb-4">Grounding Sources</p>
@@ -447,14 +594,48 @@ const App: React.FC = () => {
             )}
             
             <div className="grid grid-cols-2 gap-4">
-               <label className="aspect-square glass rounded-3xl flex flex-col items-center justify-center cursor-pointer border-white/10 hover:border-indigo-500/50 transition-all overflow-hidden relative group">
-                  <input type="file" className="hidden" accept="image/*" onChange={handleFileUpload('face')} />
-                  {visuals?.face ? <img src={visuals.face} className="w-full h-full object-cover" /> : <><Eye size={32} className="text-indigo-400 mb-2 group-hover:scale-110 transition-transform"/><span className="text-[10px] font-black uppercase tracking-widest text-gray-500">Face Scan</span></>}
-               </label>
-               <label className="aspect-square glass rounded-3xl flex flex-col items-center justify-center cursor-pointer border-white/10 hover:border-indigo-500/50 transition-all overflow-hidden relative group">
-                  <input type="file" className="hidden" accept="image/*" onChange={handleFileUpload('palm')} />
-                  {visuals?.palm ? <img src={visuals.palm} className="w-full h-full object-cover" /> : <><Layout size={32} className="text-indigo-400 mb-2 group-hover:scale-110 transition-transform"/><span className="text-[10px] font-black uppercase tracking-widest text-gray-500">Palm Pattern</span></>}
-               </label>
+               <div className="aspect-square glass rounded-3xl flex flex-col items-center justify-center cursor-pointer border-white/10 hover:border-indigo-500/50 transition-all overflow-hidden relative group">
+                  {visuals?.face ? (
+                    <div className="relative w-full h-full">
+                      <img src={visuals.face} className="w-full h-full object-cover" />
+                      <button 
+                        onClick={() => setActiveCamera('face')}
+                        className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
+                      >
+                        <RefreshCw size={24} className="text-white" />
+                      </button>
+                    </div>
+                  ) : (
+                    <button 
+                      onClick={() => setActiveCamera('face')}
+                      className="w-full h-full flex flex-col items-center justify-center"
+                    >
+                      <Eye size={32} className="text-indigo-400 mb-2 group-hover:scale-110 transition-transform"/>
+                      <span className="text-[10px] font-black uppercase tracking-widest text-gray-500">Face Reading</span>
+                    </button>
+                  )}
+               </div>
+               <div className="aspect-square glass rounded-3xl flex flex-col items-center justify-center cursor-pointer border-white/10 hover:border-indigo-500/50 transition-all overflow-hidden relative group">
+                  {visuals?.palm ? (
+                    <div className="relative w-full h-full">
+                      <img src={visuals.palm} className="w-full h-full object-cover" />
+                      <button 
+                        onClick={() => setActiveCamera('palm')}
+                        className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
+                      >
+                        <RefreshCw size={24} className="text-white" />
+                      </button>
+                    </div>
+                  ) : (
+                    <button 
+                      onClick={() => setActiveCamera('palm')}
+                      className="w-full h-full flex flex-col items-center justify-center"
+                    >
+                      <Fingerprint size={32} className="text-indigo-400 mb-2 group-hover:scale-110 transition-transform"/>
+                      <span className="text-[10px] font-black uppercase tracking-widest text-gray-500">Palm Reading</span>
+                    </button>
+                  )}
+               </div>
             </div>
 
             <button 
@@ -472,8 +653,8 @@ const App: React.FC = () => {
           loading={chatLoading} 
           error={chatError} 
           onBackToForm={() => setIsChatMode(false)} 
-          onClearChat={() => { if(window.confirm("Clear Oracle data?")) { updateAppState({ chatHistory: [] }); setCurrentChatSession(undefined); }}} 
-          suggestedQuestions={["Explain my 9-5-1 potential?", "My career roadmap 2030-2050?", "How do the 9 planets affect me in Germany?"]}
+          onClearChat={() => { if(window.confirm("Clear Oracle data?")) { updateAppState({ chatHistory: [] }); setCurrentChatSession(undefined); saveChatToFirebase(userId, []); }}} 
+          suggestedQuestions={["Do I have Pitru Dosha?", "Explain my Lal Kitab Rina?", "My Career path in 2030 (Logistics)?"]}
           isSyncing={isSyncing}
           isFirebaseSynced={isFirebaseSynced}
         />
@@ -488,6 +669,17 @@ const App: React.FC = () => {
           <div className="absolute -top-12 right-0 bg-indigo-900 text-white text-[10px] font-bold px-3 py-1 rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity">Ask the Oracle</div>
           <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" /></svg>
         </button>
+      )}
+
+      {activeCamera && (
+        <CameraCapture 
+          title={activeCamera === 'face' ? 'Face Scan' : 'Palm Scan'}
+          onClose={() => setActiveCamera(null)}
+          onCapture={(img) => {
+            const newVisuals = { ...visuals, [activeCamera]: img };
+            updateAppState({ visuals: newVisuals });
+          }}
+        />
       )}
     </div>
   );
